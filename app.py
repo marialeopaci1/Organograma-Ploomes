@@ -15,7 +15,7 @@ def escurecer_cor(hex_color, fator=0.15):
     new_rgb = colorsys.hls_to_rgb(hls[0], max(0, hls[1] - fator), min(1, hls[2] + 0.1))
     return '#%02x%02x%02x' % (int(new_rgb[0]*255), int(new_rgb[1]*255), int(new_rgb[2]*255))
 
-# --- CSS INTEGRADO ---
+# --- CSS ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
@@ -48,9 +48,6 @@ header {visibility: hidden !important;}
 
 if "logado" not in st.session_state:
     st.session_state.logado = False
-if "area_key" not in st.session_state: st.session_state.area_key = 0
-if "pessoa_key" not in st.session_state: st.session_state.pessoa_key = 0
-if "area_temp" not in st.session_state: st.session_state.area_temp = "Empresa inteira"
 
 if not st.session_state.logado:
     _, col2, _ = st.columns([1, 1.2, 1])
@@ -74,24 +71,23 @@ else:
         cols = ["Nome", "Posicao", "Area", "Reporta_a", "Descricao_Area", "Info_Posicao"]
         for c in cols: 
             if c in df.columns: df[c] = df[c].apply(limpar)
+        
         df = df[df["Area"] != ""]
         df["Area"] = df["Area"].apply(lambda x: x.upper())
         return df
 
     try:
         df = carregar()
-
-        # --- FILTROS (c1, c2, c3 simples, sem botões de limpeza) ---
+        
+        # Filtros simplificados
         c1, c2, c3 = st.columns([2, 2, 0.8])
-        with c2:
-            busca_nome = st.selectbox("Localizar Colaborador:", ["Nenhum selecionado"] + sorted(df["Nome"].unique().tolist()))
-            if busca_nome != "Nenhum selecionado":
-                st.session_state.area_selecionada = df[df["Nome"] == busca_nome]["Area"].values[0]
-
+        
         with c1:
             opcoes_area = ["Empresa inteira"] + sorted(df["Area"].unique().tolist())
-            area_sel = st.selectbox("Área de Visão:", opcoes_area, index=opcoes_area.index(st.session_state.area_selecionada))
-            st.session_state.area_selecionada = area_sel
+            area_sel = st.selectbox("Área de Visão:", opcoes_area)
+
+        with c2:
+            busca_nome = st.selectbox("Localizar Colaborador:", ["Nenhum selecionado"] + sorted(df["Nome"].unique().tolist()))
 
         with c3:
             st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
@@ -99,13 +95,14 @@ else:
                 st.session_state.logado = False
                 st.rerun()
 
-        # --- INFO BOXES ---
+        # Exibição de Informações
         if busca_nome != "Nenhum selecionado":
             pessoa = df[df["Nome"] == busca_nome].iloc[0]
             i1, i2 = st.columns(2)
             with i1: st.markdown(f'<div class="info-box"><div class="info-label">DESCRIÇÃO DA ÁREA: {pessoa["Area"]}</div><div class="info-text">{pessoa["Descricao_Area"]}</div></div>', unsafe_allow_html=True)
             with i2: st.markdown(f'<div class="info-box"><div class="info-label">INFO DA POSIÇÃO: {pessoa["Posicao"]}</div><div class="info-text">{pessoa["Info_Posicao"]}</div></div>', unsafe_allow_html=True)
 
+        # Lógica de Visão
         df_view = df.copy() if area_sel == "Empresa inteira" else pd.concat([df[df["Area"] == area_sel], df[df["Nome"].isin(df[df["Area"] == area_sel]["Reporta_a"].unique())]]).drop_duplicates()
 
         palette = ["#FF00FF", "#00FFFF", "#FFFF00", "#FF4500", "#32CD32", "#7B68EE", "#FF1493", "#A9A9A9", "#ADFF2F", "#FFD700"]
@@ -115,7 +112,7 @@ else:
         col_legenda, col_organograma = st.columns([1, 4.5])
         with col_legenda:
             st.markdown('<div class="legend-container"><div style="font-weight:900; margin-bottom:15px; font-size: 0.9rem;">LEGENDA</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="legend-item"><div class="legend-color" style="background:#000000"></div>COLABORADOR SELECIONADO</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="legend-item"><div class="legend-color" style="background:#000000"></div>SELECIONADO</div>', unsafe_allow_html=True)
             st.markdown('<hr style="margin: 10px 0; border: 0; border-top: 1px solid #eee;">', unsafe_allow_html=True)
             for area, color in area_color.items():
                 if area.strip():
@@ -129,8 +126,9 @@ else:
                 is_ceo = "CEO" in cargo.upper() or "EID" in nome.upper()
                 is_lider = any(x in cargo.upper() for x in ["GERENTE", "DIRETOR", "HEAD", "LEAD", "COORDENADOR"])
                 
-                # TAMANHOS UNIFORMES (CORREÇÃO DA BIANCA)
+                # TAMANHOS UNIFORMES PARA EVITAR ERRO DA BIANCA
                 size, width, border_w, margin = (250, 1600, 15, 60) if is_ceo else (150, 1000, 8, 40)
+                
                 cor_base = area_color.get(row["Area"], "#6347ff")
                 cor_fonte = "#000000"
                 cor_borda = escurecer_cor(cor_base) if (is_ceo or is_lider) else cor_base
@@ -167,7 +165,7 @@ else:
                         springLength: 1500, 
                         avoidOverlap: 1 
                     }}, 
-                    stabilization: {{ enabled: true, iterations: 1000 }} 
+                    stabilization: {{ enabled: true, iterations: 1500 }} 
                 }}
             }};
             
