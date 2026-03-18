@@ -15,7 +15,7 @@ def escurecer_cor(hex_color, fator=0.15):
     new_rgb = colorsys.hls_to_rgb(hls[0], max(0, hls[1] - fator), min(1, hls[2] + 0.1))
     return '#%02x%02x%02x' % (int(new_rgb[0]*255), int(new_rgb[1]*255), int(new_rgb[2]*255))
 
-# --- CSS ---
+# --- CSS INTEGRADO ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
@@ -48,6 +48,9 @@ header {visibility: hidden !important;}
 
 if "logado" not in st.session_state:
     st.session_state.logado = False
+if "area_key" not in st.session_state: st.session_state.area_key = 0
+if "pessoa_key" not in st.session_state: st.session_state.pessoa_key = 0
+if "area_temp" not in st.session_state: st.session_state.area_temp = "Empresa inteira"
 
 if not st.session_state.logado:
     _, col2, _ = st.columns([1, 1.2, 1])
@@ -71,17 +74,14 @@ else:
         cols = ["Nome", "Posicao", "Area", "Reporta_a", "Descricao_Area", "Info_Posicao"]
         for c in cols: 
             if c in df.columns: df[c] = df[c].apply(limpar)
-        
         df = df[df["Area"] != ""]
         df["Area"] = df["Area"].apply(lambda x: x.upper())
         return df
 
     try:
         df = carregar()
-        if "area_selecionada" not in st.session_state:
-            st.session_state.area_selecionada = "Empresa inteira"
 
-        # COLUNAS DE FILTRO RESTAURADAS (c1, c2, c3 simples)
+        # --- FILTROS (c1, c2, c3 simples, sem botões de limpeza) ---
         c1, c2, c3 = st.columns([2, 2, 0.8])
         with c2:
             busca_nome = st.selectbox("Localizar Colaborador:", ["Nenhum selecionado"] + sorted(df["Nome"].unique().tolist()))
@@ -99,6 +99,7 @@ else:
                 st.session_state.logado = False
                 st.rerun()
 
+        # --- INFO BOXES ---
         if busca_nome != "Nenhum selecionado":
             pessoa = df[df["Nome"] == busca_nome].iloc[0]
             i1, i2 = st.columns(2)
@@ -129,9 +130,7 @@ else:
                 is_lider = any(x in cargo.upper() for x in ["GERENTE", "DIRETOR", "HEAD", "LEAD", "COORDENADOR"])
                 
                 # TAMANHOS UNIFORMES (CORREÇÃO DA BIANCA)
-                # CEO: 250/1600. DEMAIS (Liderança E Operacional): 150/1000
                 size, width, border_w, margin = (250, 1600, 15, 60) if is_ceo else (150, 1000, 8, 40)
-                
                 cor_base = area_color.get(row["Area"], "#6347ff")
                 cor_fonte = "#000000"
                 cor_borda = escurecer_cor(cor_base) if (is_ceo or is_lider) else cor_base
