@@ -78,16 +78,19 @@ else:
 
     try:
         df = carregar()
-        
-        # Filtros simplificados
-        c1, c2, c3 = st.columns([2, 2, 0.8])
-        
-        with c1:
-            opcoes_area = ["Empresa inteira"] + sorted(df["Area"].unique().tolist())
-            area_sel = st.selectbox("Área de Visão:", opcoes_area)
+        if "area_selecionada" not in st.session_state:
+            st.session_state.area_selecionada = "Empresa inteira"
 
+        c1, c2, c3 = st.columns([2, 2, 0.8])
         with c2:
             busca_nome = st.selectbox("Localizar Colaborador:", ["Nenhum selecionado"] + sorted(df["Nome"].unique().tolist()))
+            if busca_nome != "Nenhum selecionado":
+                st.session_state.area_selecionada = df[df["Nome"] == busca_nome]["Area"].values[0]
+
+        with c1:
+            opcoes_area = ["Empresa inteira"] + sorted(df["Area"].unique().tolist())
+            area_sel = st.selectbox("Área de Visão:", opcoes_area, index=opcoes_area.index(st.session_state.area_selecionada))
+            st.session_state.area_selecionada = area_sel
 
         with c3:
             st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
@@ -95,14 +98,12 @@ else:
                 st.session_state.logado = False
                 st.rerun()
 
-        # Exibição de Informações
         if busca_nome != "Nenhum selecionado":
             pessoa = df[df["Nome"] == busca_nome].iloc[0]
             i1, i2 = st.columns(2)
             with i1: st.markdown(f'<div class="info-box"><div class="info-label">DESCRIÇÃO DA ÁREA: {pessoa["Area"]}</div><div class="info-text">{pessoa["Descricao_Area"]}</div></div>', unsafe_allow_html=True)
             with i2: st.markdown(f'<div class="info-box"><div class="info-label">INFO DA POSIÇÃO: {pessoa["Posicao"]}</div><div class="info-text">{pessoa["Info_Posicao"]}</div></div>', unsafe_allow_html=True)
 
-        # Lógica de Visão
         df_view = df.copy() if area_sel == "Empresa inteira" else pd.concat([df[df["Area"] == area_sel], df[df["Nome"].isin(df[df["Area"] == area_sel]["Reporta_a"].unique())]]).drop_duplicates()
 
         palette = ["#FF00FF", "#00FFFF", "#FFFF00", "#FF4500", "#32CD32", "#7B68EE", "#FF1493", "#A9A9A9", "#ADFF2F", "#FFD700"]
@@ -112,8 +113,11 @@ else:
         col_legenda, col_organograma = st.columns([1, 4.5])
         with col_legenda:
             st.markdown('<div class="legend-container"><div style="font-weight:900; margin-bottom:15px; font-size: 0.9rem;">LEGENDA</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="legend-item"><div class="legend-color" style="background:#000000"></div>SELECIONADO</div>', unsafe_allow_html=True)
+            
+            # ADICIONADO: Item de legenda para o selecionado
+            st.markdown(f'<div class="legend-item"><div class="legend-color" style="background:#000000"></div>COLABORADOR SELECIONADO</div>', unsafe_allow_html=True)
             st.markdown('<hr style="margin: 10px 0; border: 0; border-top: 1px solid #eee;">', unsafe_allow_html=True)
+
             for area, color in area_color.items():
                 if area.strip():
                     st.markdown(f'<div class="legend-item"><div class="legend-color" style="background:{color}"></div>{area}</div>', unsafe_allow_html=True)
@@ -126,15 +130,16 @@ else:
                 is_ceo = "CEO" in cargo.upper() or "EID" in nome.upper()
                 is_lider = any(x in cargo.upper() for x in ["GERENTE", "DIRETOR", "HEAD", "LEAD", "COORDENADOR"])
                 
-                # TAMANHOS UNIFORMES PARA EVITAR ERRO DA BIANCA
-                size, width, border_w, margin = (250, 1600, 15, 60) if is_ceo else (150, 1000, 8, 40)
+                size, width, border_w, margin = (300, 2000, 15, 60) if is_ceo else (180, 1400, 10, 45) if is_lider else (120, 900, 4, 30)
                 
                 cor_base = area_color.get(row["Area"], "#6347ff")
                 cor_fonte = "#000000"
                 cor_borda = escurecer_cor(cor_base) if (is_ceo or is_lider) else cor_base
                 
                 if busca_nome != "Nenhum selecionado" and nome == busca_nome:
-                    cor_base, cor_fonte, cor_borda = "#000000", "#FFFFFF", "#000000"
+                    cor_base = "#000000"
+                    cor_fonte = "#FFFFFF"
+                    cor_borda = "#000000"
 
                 nodes.append({
                     "id": nome, "label": f"{nome}|{cargo}", 
@@ -165,7 +170,7 @@ else:
                         springLength: 1500, 
                         avoidOverlap: 1 
                     }}, 
-                    stabilization: {{ enabled: true, iterations: 1500 }} 
+                    stabilization: {{ enabled: true, iterations: 1000 }} 
                 }}
             }};
             
