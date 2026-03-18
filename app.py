@@ -127,7 +127,9 @@ else:
                 is_ceo = "CEO" in cargo.upper() or "EID" in nome.upper()
                 is_lider = any(x in cargo.upper() for x in ["GERENTE", "DIRETOR", "HEAD", "LEAD", "COORDENADOR"])
                 
-                size, width, border_w, margin = (300, 2000, 15, 60) if is_ceo else (180, 1400, 10, 45) if is_lider else (120, 900, 4, 30)
+                # AJUSTE DE PROPORÇÃO: Liderança (180/1400), Operacional (70/500)
+                size, width, border_w, margin = (300, 2000, 15, 60) if is_ceo else (180, 1400, 10, 45) if is_lider else (70, 500, 4, 30)
+                
                 cor_base = area_color.get(row["Area"], "#6347ff")
                 cor_fonte = "#000000"
                 cor_borda = escurecer_cor(cor_base) if (is_ceo or is_lider) else cor_base
