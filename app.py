@@ -113,11 +113,8 @@ else:
         col_legenda, col_organograma = st.columns([1, 4.5])
         with col_legenda:
             st.markdown('<div class="legend-container"><div style="font-weight:900; margin-bottom:15px; font-size: 0.9rem;">LEGENDA</div>', unsafe_allow_html=True)
-            
-            # ADICIONADO: Item de legenda para o selecionado
             st.markdown(f'<div class="legend-item"><div class="legend-color" style="background:#000000"></div>COLABORADOR SELECIONADO</div>', unsafe_allow_html=True)
             st.markdown('<hr style="margin: 10px 0; border: 0; border-top: 1px solid #eee;">', unsafe_allow_html=True)
-
             for area, color in area_color.items():
                 if area.strip():
                     st.markdown(f'<div class="legend-item"><div class="legend-color" style="background:{color}"></div>{area}</div>', unsafe_allow_html=True)
@@ -131,15 +128,12 @@ else:
                 is_lider = any(x in cargo.upper() for x in ["GERENTE", "DIRETOR", "HEAD", "LEAD", "COORDENADOR"])
                 
                 size, width, border_w, margin = (300, 2000, 15, 60) if is_ceo else (180, 1400, 10, 45) if is_lider else (120, 900, 4, 30)
-                
                 cor_base = area_color.get(row["Area"], "#6347ff")
                 cor_fonte = "#000000"
                 cor_borda = escurecer_cor(cor_base) if (is_ceo or is_lider) else cor_base
                 
                 if busca_nome != "Nenhum selecionado" and nome == busca_nome:
-                    cor_base = "#000000"
-                    cor_fonte = "#FFFFFF"
-                    cor_borda = "#000000"
+                    cor_base, cor_fonte, cor_borda = "#000000", "#FFFFFF", "#000000"
 
                 nodes.append({
                     "id": nome, "label": f"{nome}|{cargo}", 
@@ -170,7 +164,11 @@ else:
                         springLength: 1500, 
                         avoidOverlap: 1 
                     }}, 
-                    stabilization: {{ enabled: true, iterations: 1000 }} 
+                    stabilization: {{ 
+                        enabled: true, 
+                        iterations: 2000, 
+                        updateInterval: 100 
+                    }} 
                 }}
             }};
             
