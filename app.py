@@ -49,6 +49,10 @@ header {visibility: hidden !important;}
 if "logado" not in st.session_state:
     st.session_state.logado = False
 
+if "area_key" not in st.session_state: st.session_state.area_key = 0
+if "pessoa_key" not in st.session_state: st.session_state.pessoa_key = 0
+if "area_temp" not in st.session_state: st.session_state.area_temp = "Empresa inteira"
+
 if not st.session_state.logado:
     _, col2, _ = st.columns([1, 1.2, 1])
     with col2:
@@ -71,26 +75,44 @@ else:
         cols = ["Nome", "Posicao", "Area", "Reporta_a", "Descricao_Area", "Info_Posicao"]
         for c in cols: 
             if c in df.columns: df[c] = df[c].apply(limpar)
-        
         df = df[df["Area"] != ""]
         df["Area"] = df["Area"].apply(lambda x: x.upper())
         return df
 
     try:
         df = carregar()
-        if "area_selecionada" not in st.session_state:
-            st.session_state.area_selecionada = "Empresa inteira"
 
-        c1, c2, c3 = st.columns([2, 2, 0.8])
-        with c2:
-            busca_nome = st.selectbox("Localizar Colaborador:", ["Nenhum selecionado"] + sorted(df["Nome"].unique().tolist()))
-            if busca_nome != "Nenhum selecionado":
-                st.session_state.area_selecionada = df[df["Nome"] == busca_nome]["Area"].values[0]
-
+        # --- FILTROS ---
+        c1, c1_limpa, c2, c2_limpa, c3 = st.columns([2, 0.3, 2, 0.3, 0.8])
+        
         with c1:
             opcoes_area = ["Empresa inteira"] + sorted(df["Area"].unique().tolist())
-            area_sel = st.selectbox("Área de Visão:", opcoes_area, index=opcoes_area.index(st.session_state.area_selecionada))
-            st.session_state.area_selecionada = area_sel
+            area_sel = st.selectbox("Área de Visão:", opcoes_area, 
+                                    key=f"area_sb_{st.session_state.area_key}", 
+                                    index=opcoes_area.index(st.session_state.area_temp))
+            st.session_state.area_temp = area_sel
+
+        with c1_limpa:
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+            if st.button("🧹", key="btn_limpa_area", help="Limpar Área"):
+                st.session_state.area_temp = "Empresa inteira"
+                st.session_state.area_key += 1
+                st.rerun()
+
+        with c2:
+            busca_nome = st.selectbox("Localizar Colaborador:", ["Nenhum selecionado"] + sorted(df["Nome"].unique().tolist()), 
+                                      key=f"pessoa_sb_{st.session_state.pessoa_key}")
+            if busca_nome != "Nenhum selecionado":
+                area_vinculada = df[df["Nome"] == busca_nome]["Area"].values[0]
+                if st.session_state.area_temp != area_vinculada:
+                    st.session_state.area_temp = area_vinculada
+                    st.rerun()
+
+        with c2_limpa:
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+            if st.button("🧹", key="btn_limpa_pessoa", help="Limpar Pessoa"):
+                st.session_state.pessoa_key += 1
+                st.rerun()
 
         with c3:
             st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
@@ -98,6 +120,7 @@ else:
                 st.session_state.logado = False
                 st.rerun()
 
+        # --- INFO BOXES ---
         if busca_nome != "Nenhum selecionado":
             pessoa = df[df["Nome"] == busca_nome].iloc[0]
             i1, i2 = st.columns(2)
@@ -127,9 +150,8 @@ else:
                 is_ceo = "CEO" in cargo.upper() or "EID" in nome.upper()
                 is_lider = any(x in cargo.upper() for x in ["GERENTE", "DIRETOR", "HEAD", "LEAD", "COORDENADOR"])
                 
-                # AJUSTE DE PROPORÇÃO: Liderança (180/1400), Operacional (70/500)
-                size, width, border_w, margin = (300, 2000, 15, 60) if is_ceo else (180, 1400, 10, 45) if is_lider else (70, 500, 4, 30)
-                
+                # CARDS GIGANTES MANTIDOS
+                size, width, border_w, margin = (300, 2000, 15, 60) if is_ceo else (180, 1400, 10, 45) if is_lider else (120, 900, 4, 30)
                 cor_base = area_color.get(row["Area"], "#6347ff")
                 cor_fonte = "#000000"
                 cor_borda = escurecer_cor(cor_base) if (is_ceo or is_lider) else cor_base
@@ -138,7 +160,7 @@ else:
                     cor_base, cor_fonte, cor_borda = "#000000", "#FFFFFF", "#000000"
 
                 nodes.append({
-                    "id": nome, "label": f"{nome}|{cargo}", 
+                    "id": nome, "label": nome + "|" + cargo, 
                     "color": {"background": cor_base, "border": cor_borda},
                     "font": {"color": cor_fonte, "size": size, "face": "Inter", "multi": "md", "bold": {"color": cor_fonte}},
                     "widthConstraint": {"maximum": width}, "borderWidth": border_w, "shadow": True,
@@ -161,9 +183,9 @@ else:
                     enabled: true, 
                     solver: "forceAtlas2Based", 
                     forceAtlas2Based: {{ 
-                        gravitationalConstant: -40000, 
-                        centralGravity: 0.005, 
-                        springLength: 1500, 
+                        gravitationalConstant: -100000, // Aumentada brutalmente para afastar os cards gigantes
+                        centralGravity: 0.001, // Reduzida para deixar os cards flutuarem mais longe
+                        springLength: 2500, // Conexões muito longas para dar espaço
                         avoidOverlap: 1 
                     }}, 
                     stabilization: {{ 
@@ -190,4 +212,4 @@ else:
             </script>
             """
             components.html(html_vis, height=900)
-    except Exception as e: st.error(f"Erro: {{e}}")
+    except Exception as e: st.error(f"Erro: {e}")
