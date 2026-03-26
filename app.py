@@ -182,6 +182,20 @@ else:
             var nodesRaw = {json.dumps(nodes)};
             nodesRaw.forEach(node => {{ var p = node.label.split('|'); node.label = '*' + p[0] + '*\\n\\n' + p[1]; }});
 
+            // Web Worker: dispara ticks a ~60fps mesmo com a aba em segundo plano,
+            // evitando que o browser throttle o requestAnimationFrame durante a estabilização.
+            try {{
+                var _wc = 'setInterval(function(){{postMessage(1)}},16)';
+                var _wb = new Blob([_wc], {{type:'text/javascript'}});
+                var _wk = new Worker(URL.createObjectURL(_wb));
+                var _rq = [];
+                window.requestAnimationFrame = function(cb) {{ _rq.push(cb); return _rq.length; }};
+                _wk.onmessage = function() {{
+                    var cbs = _rq.splice(0), t = performance.now();
+                    for (var i = 0; i < cbs.length; i++) {{ try {{ cbs[i](t); }} catch(e) {{}} }}
+                }};
+            }} catch(e) {{}}
+
             var options = {{
                 nodes: {{ shape: "box", font: {{ face: 'Inter', multi: 'md' }} }},
                 physics: {{
@@ -193,7 +207,7 @@ else:
                         springLength: 1500,
                         avoidOverlap: 1
                     }},
-                    stabilization: {{ enabled: false }}
+                    stabilization: {{ enabled: true, iterations: 200, fit: true }}
                 }}
             }};
 
@@ -202,11 +216,6 @@ else:
                 {{ nodes: new vis.DataSet(nodesRaw), edges: new vis.DataSet({json.dumps(edges)}) }},
                 options
             );
-
-            // Estabilização headless: roda a física internamente sem renderizar frames.
-            // Muito mais rápida e não depende de requestAnimationFrame,
-            // então funciona normalmente mesmo com a aba em segundo plano.
-            network.stabilize(500);
 
             network.on("stabilized", function () {{
                 network.setOptions({{ physics: false }});
