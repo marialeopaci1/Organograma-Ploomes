@@ -4,17 +4,14 @@ import streamlit.components.v1 as components
 import json
 import re
 import colorsys
-
 # 1. Configuração de Layout
 st.set_page_config(page_title="Portal RH | Ploomes", layout="wide", initial_sidebar_state="collapsed")
-
 def escurecer_cor(hex_color, fator=0.15):
     hex_color = hex_color.lstrip('#')
     rgb = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
     hls = colorsys.rgb_to_hls(rgb[0]/255.0, rgb[1]/255.0, rgb[2]/255.0)
     new_rgb = colorsys.hls_to_rgb(hls[0], max(0, hls[1] - fator), min(1, hls[2] + 0.1))
     return '#%02x%02x%02x' % (int(new_rgb[0]*255), int(new_rgb[1]*255), int(new_rgb[2]*255))
-
 # --- CSS ---
 st.markdown("""
 <style>
@@ -22,7 +19,6 @@ st.markdown("""
 html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 header {visibility: hidden !important;}
 .block-container { padding-top: 1.5rem !important; }
-
 .info-box {
     background-color: #fcfcfc;
     border-radius: 15px;
@@ -33,7 +29,6 @@ header {visibility: hidden !important;}
 }
 .info-label { color: #6347ff; font-size: 0.85rem; font-weight: 800; text-transform: uppercase; margin-bottom: 8px; }
 .info-text { color: #444; font-size: 0.95rem; line-height: 1.5; }
-
 .legend-container {
     background-color: #ffffff;
     border-radius: 15px;
@@ -45,10 +40,8 @@ header {visibility: hidden !important;}
 .legend-color { width: 22px; height: 22px; border-radius: 6px; margin-right: 12px; border: 1px solid #ddd; }
 </style>
 """, unsafe_allow_html=True)
-
 if "logado" not in st.session_state:
     st.session_state.logado = False
-
 if not st.session_state.logado:
     _, col2, _ = st.columns([1, 1.2, 1])
     with col2:
@@ -64,130 +57,115 @@ if not st.session_state.logado:
 else:
     @st.cache_data(ttl=10)
     def carregar():
-        url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRdhVvPbEjXcIfXMeu6LXzK2R7gxHsQ-oJOdM8YOXrQqjZl8XHovOYLhYWlD0s93PaOev0_uJFVDsj_/pub?output=tsv"
-        df = pd.read_csv(url, sep="\t")
+        url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTLRqVZ9LWZMaPQ9MFGvOcQ8i-_ljOeKPO8w1jpwTscup0VM1ERFYgwitfmH0Zjfo-u9-fjfd60goF1/pub?output=csv"
+        df = pd.read_csv(url, sep=",")
         df.columns = df.columns.str.strip()
         def limpar(t): return str(t).strip() if pd.notna(t) else ""
-        cols = ["Nome", "Posicao", "Area", "Reporta_a", "Descricao_Area", "Info_Posicao"]
-        for c in cols: 
+        cols = ["NOME", "CARGO", "ÁREA", "LIDER DIRETO", "Descricao_Area", "Info_Posicao", "SUB-ÁREA", "CLASSIFICAÇÃO"]
+        for c in cols:
             if c in df.columns: df[c] = df[c].apply(limpar)
-        
-        df = df[df["Area"] != ""]
-        df["Area"] = df["Area"].apply(lambda x: x.upper())
-        return df
 
+        df = df[df["ÁREA"] != ""]
+        df["ÁREA"] = df["ÁREA"].apply(lambda x: x.upper())
+        return df
     try:
         df = carregar()
         if "area_selecionada" not in st.session_state:
             st.session_state.area_selecionada = "Empresa inteira"
-
         c1, c2, c3 = st.columns([2, 2, 0.8])
         with c2:
-            busca_nome = st.selectbox("Localizar Colaborador:", ["Nenhum selecionado"] + sorted(df["Nome"].unique().tolist()))
+            busca_nome = st.selectbox("Localizar Colaborador:", ["Nenhum selecionado"] + sorted(df["NOME"].unique().tolist()))
             if busca_nome != "Nenhum selecionado":
-                st.session_state.area_selecionada = df[df["Nome"] == busca_nome]["Area"].values[0]
-
+                st.session_state.area_selecionada = df[df["NOME"] == busca_nome]["ÁREA"].values[0]
         with c1:
-            opcoes_area = ["Empresa inteira"] + sorted(df["Area"].unique().tolist())
+            opcoes_area = ["Empresa inteira"] + sorted(df["ÁREA"].unique().tolist())
             area_sel = st.selectbox("Área de Visão:", opcoes_area, index=opcoes_area.index(st.session_state.area_selecionada))
             st.session_state.area_selecionada = area_sel
-
         with c3:
             st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
             if st.button("SAIR"):
                 st.session_state.logado = False
                 st.rerun()
-
         if busca_nome != "Nenhum selecionado":
-            pessoa = df[df["Nome"] == busca_nome].iloc[0]
+            pessoa = df[df["NOME"] == busca_nome].iloc[0]
             i1, i2 = st.columns(2)
-            with i1: st.markdown(f'<div class="info-box"><div class="info-label">DESCRIÇÃO DA ÁREA: {pessoa["Area"]}</div><div class="info-text">{pessoa["Descricao_Area"]}</div></div>', unsafe_allow_html=True)
-            with i2: st.markdown(f'<div class="info-box"><div class="info-label">INFO DA POSIÇÃO: {pessoa["Posicao"]}</div><div class="info-text">{pessoa["Info_Posicao"]}</div></div>', unsafe_allow_html=True)
-
-        df_view = df.copy() if area_sel == "Empresa inteira" else pd.concat([df[df["Area"] == area_sel], df[df["Nome"].isin(df[df["Area"] == area_sel]["Reporta_a"].unique())]]).drop_duplicates()
-
+            with i1: st.markdown(f'<div class="info-box"><div class="info-label">DESCRIÇÃO DA ÁREA: {pessoa["ÁREA"]}</div><div class="info-text">{pessoa["Descricao_Area"]}</div></div>', unsafe_allow_html=True)
+            with i2: st.markdown(f'<div class="info-box"><div class="info-label">INFO DA POSIÇÃO: {pessoa["CARGO"]}</div><div class="info-text">{pessoa["Info_Posicao"]}</div></div>', unsafe_allow_html=True)
+        df_view = df.copy() if area_sel == "Empresa inteira" else pd.concat([df[df["ÁREA"] == area_sel], df[df["NOME"].isin(df[df["ÁREA"] == area_sel]["LIDER DIRETO"].unique())]]).drop_duplicates()
         palette = ["#FF00FF", "#00FFFF", "#FFFF00", "#FF4500", "#32CD32", "#7B68EE", "#FF1493", "#A9A9A9", "#ADFF2F", "#FFD700"]
-        unique_areas = sorted(df["Area"].unique())
+        unique_areas = sorted(df["ÁREA"].unique())
         area_color = {a: palette[i % len(palette)] for i, a in enumerate(unique_areas)}
-
         col_legenda, col_organograma = st.columns([1, 4.5])
         with col_legenda:
             st.markdown('<div class="legend-container"><div style="font-weight:900; margin-bottom:15px; font-size: 0.9rem;">LEGENDA</div>', unsafe_allow_html=True)
-            
-            # ADICIONADO: Item de legenda para o selecionado
             st.markdown(f'<div class="legend-item"><div class="legend-color" style="background:#000000"></div>COLABORADOR SELECIONADO</div>', unsafe_allow_html=True)
             st.markdown('<hr style="margin: 10px 0; border: 0; border-top: 1px solid #eee;">', unsafe_allow_html=True)
-
             for area, color in area_color.items():
                 if area.strip():
                     st.markdown(f'<div class="legend-item"><div class="legend-color" style="background:{color}"></div>{area}</div>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
-
         with col_organograma:
             nodes = []
             for _, row in df_view.iterrows():
-                nome, cargo = row["Nome"], row["Posicao"]
+                nome, cargo = row["NOME"], row["CARGO"]
                 is_ceo = "CEO" in cargo.upper() or "EID" in nome.upper()
                 is_lider = any(x in cargo.upper() for x in ["GERENTE", "DIRETOR", "HEAD", "LEAD", "COORDENADOR"])
-                
+
                 size, width, border_w, margin = (300, 2000, 15, 60) if is_ceo else (180, 1400, 10, 45) if is_lider else (120, 900, 4, 30)
-                
-                cor_base = area_color.get(row["Area"], "#6347ff")
+
+                cor_base = area_color.get(row["ÁREA"], "#6347ff")
                 cor_fonte = "#000000"
                 cor_borda = escurecer_cor(cor_base) if (is_ceo or is_lider) else cor_base
-                
+
                 if busca_nome != "Nenhum selecionado" and nome == busca_nome:
                     cor_base = "#000000"
                     cor_fonte = "#FFFFFF"
                     cor_borda = "#000000"
-
                 nodes.append({
-                    "id": nome, "label": f"{nome}|{cargo}", 
+                    "id": nome, "label": f"{nome}|{cargo}",
                     "color": {"background": cor_base, "border": cor_borda},
                     "font": {"color": cor_fonte, "size": size, "face": "Inter", "multi": "md", "bold": {"color": cor_fonte}},
                     "widthConstraint": {"maximum": width}, "borderWidth": border_w, "shadow": True,
                     "margin": margin
                 })
-                
-            edges = [{"from": row["Reporta_a"], "to": row["Nome"], "arrows": "to", "color": "#000000", "width": 8} 
-                     for _, row in df_view.iterrows() if row["Reporta_a"] and row["Reporta_a"] in df_view["Nome"].values]
 
+            edges = [{"from": row["LIDER DIRETO"], "to": row["NOME"], "arrows": "to", "color": "#000000", "width": 8}
+                     for _, row in df_view.iterrows() if row["LIDER DIRETO"] and row["LIDER DIRETO"] in df_view["NOME"].values]
             html_vis = f"""
             <div id="network" style="height:850px; width:100%; background: #ffffff; border-radius: 20px;"></div>
             <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
             <script>
             var nodesRaw = {json.dumps(nodes)};
             nodesRaw.forEach(node => {{ var p = node.label.split('|'); node.label = '*' + p[0] + '*\\n\\n' + p[1]; }});
-            
+
             var options = {{
                 nodes: {{ shape: "box", font: {{ face: 'Inter', multi: 'md' }} }},
-                physics: {{ 
-                    enabled: true, 
-                    solver: "forceAtlas2Based", 
-                    forceAtlas2Based: {{ 
-                        gravitationalConstant: -40000, 
-                        centralGravity: 0.005, 
-                        springLength: 1500, 
-                        avoidOverlap: 1 
-                    }}, 
-                    stabilization: {{ enabled: true, iterations: 1000 }} 
+                physics: {{
+                    enabled: true,
+                    solver: "forceAtlas2Based",
+                    forceAtlas2Based: {{
+                        gravitationalConstant: -40000,
+                        centralGravity: 0.005,
+                        springLength: 1500,
+                        avoidOverlap: 1
+                    }},
+                    stabilization: {{ enabled: true, iterations: 1000 }}
                 }}
             }};
-            
+
             var network = new vis.Network(document.getElementById("network"), {{ nodes: new vis.DataSet(nodesRaw), edges: new vis.DataSet({json.dumps(edges)}) }}, options);
-            
+
             network.on("stabilized", function () {{
                 network.setOptions({{ physics: false }});
             }});
-
             network.once("stabilized", function () {{
                 var b = "{busca_nome}";
-                if (b !== "Nenhum selecionado") {{ 
-                    network.selectNodes([b]); 
-                    network.focus(b, {{ scale: 0.3, animation: true }}); 
+                if (b !== "Nenhum selecionado") {{
+                    network.selectNodes([b]);
+                    network.focus(b, {{ scale: 0.3, animation: true }});
                 }}
             }});
             </script>
             """
             components.html(html_vis, height=900)
-    except Exception as e: st.error(f"Erro: {{e}}")
+    except Exception as e: st.error(f"Erro: {e}")
