@@ -217,8 +217,8 @@ else:
                 options
             );
 
-            network.on("stabilized", function () {{
-                network.setOptions({{ physics: false }});
+            // Após 5s, mostra o organograma independente da estabilização
+            setTimeout(function() {{
                 document.getElementById("loading").style.display = "none";
                 document.getElementById("network").style.display = "block";
                 var b = "{busca_nome}";
@@ -226,6 +226,13 @@ else:
                     network.selectNodes([b]);
                     network.focus(b, {{ scale: 0.3, animation: true }});
                 }}
+            }}, 5000);
+
+            // Quando estabilizar de vez, desliga a física
+            network.on("stabilized", function () {{
+                network.setOptions({{ physics: false }});
+                document.getElementById("loading").style.display = "none";
+                document.getElementById("network").style.display = "block";
             }});
             </script>
             """
