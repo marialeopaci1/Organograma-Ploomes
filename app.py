@@ -4,8 +4,41 @@ import streamlit.components.v1 as components
 import json
 import re
 import colorsys
+import unicodedata
 # 1. Configuração de Layout
 st.set_page_config(page_title="Portal RH | Ploomes", layout="wide", initial_sidebar_state="collapsed")
+def _normalizar_nome(texto):
+    """Remove acentos e converte para maiúsculo para comparação."""
+    nfkd = unicodedata.normalize('NFKD', str(texto))
+    sem_acento = ''.join(c for c in nfkd if not unicodedata.combining(c))
+    return sem_acento.upper().strip()
+
+def _resolver_lider(lider, lista_nomes):
+    """Mapeia nome abreviado do LIDER DIRETO para o NOME completo na base."""
+    if not lider:
+        return lider
+    # Se já existe match exato, retorna como está
+    if lider in lista_nomes:
+        return lider
+    STOP = {'DE', 'DO', 'DA', 'DOS', 'DAS', 'E'}
+    palavras_lider = [p for p in _normalizar_nome(lider).split() if p not in STOP]
+    if not palavras_lider:
+        return lider
+    candidatos = []
+    for nome in lista_nomes:
+        nome_norm = _normalizar_nome(nome)
+        palavras_nome = nome_norm.split()
+        palavras_nome_set = set(palavras_nome)
+        # Todas as palavras do lider devem estar presentes no nome completo
+        if all(p in palavras_nome_set for p in palavras_lider):
+            primeiro_coincide = palavras_nome[0] == palavras_lider[0]
+            candidatos.append((nome, primeiro_coincide, len(palavras_nome)))
+    if not candidatos:
+        return lider  # sem match — mantém original (não criará aresta)
+    # Prioriza: primeiro nome coincide → depois menor quantidade de palavras (nome menos genérico)
+    candidatos.sort(key=lambda x: (-int(x[1]), x[2]))
+    return candidatos[0][0]
+
 def escurecer_cor(hex_color, fator=0.15):
     hex_color = hex_color.lstrip('#')
     rgb = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
@@ -67,6 +100,9 @@ else:
 
         df = df[df["ÁREA"] != ""]
         df["ÁREA"] = df["ÁREA"].apply(lambda x: x.upper())
+        # Resolver nomes abreviados em LIDER DIRETO para o nome completo da base
+        lista_nomes = df["NOME"].tolist()
+        df["LIDER DIRETO"] = df["LIDER DIRETO"].apply(lambda l: _resolver_lider(l, lista_nomes))
         return df
     try:
         df = carregar()
