@@ -168,7 +168,15 @@ else:
             edges = [{"from": row["LIDER DIRETO"], "to": row["NOME"], "arrows": "to", "color": "#000000", "width": 8}
                      for _, row in df_view.iterrows() if row["LIDER DIRETO"] and row["LIDER DIRETO"] in df_view["NOME"].values]
             html_vis = f"""
-            <div id="network" style="height:850px; width:100%; background: #ffffff; border-radius: 20px;"></div>
+            <div id="loading" style="height:850px; width:100%; background:#ffffff; border-radius:20px;
+                display:flex; align-items:center; justify-content:center; flex-direction:column; gap:16px;">
+                <div style="width:48px;height:48px;border:5px solid #eee;border-top-color:#6347ff;
+                    border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+                <span style="color:#6347ff;font-family:Inter,sans-serif;font-weight:700;font-size:1rem;">
+                    Montando organograma...</span>
+            </div>
+            <div id="network" style="height:850px; width:100%; background:#ffffff; border-radius:20px; display:none;"></div>
+            <style>@keyframes spin{{to{{transform:rotate(360deg)}}}}</style>
             <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
             <script>
             var nodesRaw = {json.dumps(nodes)};
@@ -185,16 +193,25 @@ else:
                         springLength: 1500,
                         avoidOverlap: 1
                     }},
-                    stabilization: {{ enabled: true, iterations: 1000 }}
+                    stabilization: {{ enabled: false }}
                 }}
             }};
 
-            var network = new vis.Network(document.getElementById("network"), {{ nodes: new vis.DataSet(nodesRaw), edges: new vis.DataSet({json.dumps(edges)}) }}, options);
+            var network = new vis.Network(
+                document.getElementById("network"),
+                {{ nodes: new vis.DataSet(nodesRaw), edges: new vis.DataSet({json.dumps(edges)}) }},
+                options
+            );
+
+            // Estabilização headless: roda a física internamente sem renderizar frames.
+            // Muito mais rápida e não depende de requestAnimationFrame,
+            // então funciona normalmente mesmo com a aba em segundo plano.
+            network.stabilize(500);
 
             network.on("stabilized", function () {{
                 network.setOptions({{ physics: false }});
-            }});
-            network.once("stabilized", function () {{
+                document.getElementById("loading").style.display = "none";
+                document.getElementById("network").style.display = "block";
                 var b = "{busca_nome}";
                 if (b !== "Nenhum selecionado") {{
                     network.selectNodes([b]);
