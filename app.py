@@ -5,8 +5,10 @@ import json
 import re
 import colorsys
 import unicodedata
+
 # 1. Configuração de Layout
 st.set_page_config(page_title="Portal RH | Ploomes", layout="wide", initial_sidebar_state="collapsed")
+
 def _normalizar_nome(texto):
     """Remove acentos e converte para maiúsculo para comparação."""
     nfkd = unicodedata.normalize('NFKD', str(texto))
@@ -17,25 +19,25 @@ def _resolver_lider(lider, lista_nomes):
     """Mapeia nome abreviado do LIDER DIRETO para o NOME completo na base."""
     if not lider:
         return lider
-    # Se já existe match exato, retorna como está
     if lider in lista_nomes:
         return lider
+
     STOP = {'DE', 'DO', 'DA', 'DOS', 'DAS', 'E'}
     palavras_lider = [p for p in _normalizar_nome(lider).split() if p not in STOP]
     if not palavras_lider:
         return lider
+
     candidatos = []
     for nome in lista_nomes:
         nome_norm = _normalizar_nome(nome)
         palavras_nome = nome_norm.split()
         palavras_nome_set = set(palavras_nome)
-        # Todas as palavras do lider devem estar presentes no nome completo
         if all(p in palavras_nome_set for p in palavras_lider):
             primeiro_coincide = palavras_nome[0] == palavras_lider[0]
             candidatos.append((nome, primeiro_coincide, len(palavras_nome)))
+
     if not candidatos:
-        return lider  # sem match — mantém original (não criará aresta)
-    # Prioriza: primeiro nome coincide → depois menor quantidade de palavras (nome menos genérico)
+        return lider
     candidatos.sort(key=lambda x: (-int(x[1]), x[2]))
     return candidatos[0][0]
 
@@ -45,22 +47,23 @@ def escurecer_cor(hex_color, fator=0.15):
     hls = colorsys.rgb_to_hls(rgb[0]/255.0, rgb[1]/255.0, rgb[2]/255.0)
     new_rgb = colorsys.hls_to_rgb(hls[0], max(0, hls[1] - fator), min(1, hls[2] + 0.1))
     return '#%02x%02x%02x' % (int(new_rgb[0]*255), int(new_rgb[1]*255), int(new_rgb[2]*255))
+
 # --- CSS ---
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
-html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap');
+html, body, [class*="css"] { font-family: 'Manrope', sans-serif; }
 header {visibility: hidden !important;}
 .block-container { padding-top: 1.5rem !important; }
 .info-box {
     background-color: #fcfcfc;
     border-radius: 15px;
     padding: 20px;
-    border-left: 6px solid #6347ff;
+    border-left: 6px solid #7443F6;
     box-shadow: 0 4px 12px rgba(0,0,0,0.05);
     margin-bottom: 20px;
 }
-.info-label { color: #6347ff; font-size: 0.85rem; font-weight: 800; text-transform: uppercase; margin-bottom: 8px; }
+.info-label { color: #7443F6; font-size: 0.85rem; font-weight: 800; text-transform: uppercase; margin-bottom: 8px; }
 .info-text { color: #444; font-size: 0.95rem; line-height: 1.5; }
 .legend-container {
     background-color: #ffffff;
@@ -73,12 +76,15 @@ header {visibility: hidden !important;}
 .legend-color { width: 22px; height: 22px; border-radius: 6px; margin-right: 12px; border: 1px solid #ddd; }
 </style>
 """, unsafe_allow_html=True)
+
+# ── Inicialização do estado ──────────────────────────────────────────────────
 if "logado" not in st.session_state:
     st.session_state.logado = False
+
 if not st.session_state.logado:
     _, col2, _ = st.columns([1, 1.2, 1])
     with col2:
-        st.markdown('<br><br><div style="background:white; padding:50px; border-radius:30px; text-align:center; box-shadow:0 15px 35px rgba(0,0,0,0.2); border-top:10px solid #6347ff;">', unsafe_allow_html=True)
+        st.markdown('<br><br><div style="background:white; padding:50px; border-radius:30px; text-align:center; box-shadow:0 15px 35px rgba(0,0,0,0.2); border-top:10px solid #7443F6;">', unsafe_allow_html=True)
         st.title("Ploomes")
         u = st.text_input("Usuário")
         s = st.text_input("Senha", type="password")
@@ -96,83 +102,170 @@ else:
         def limpar(t): return str(t).strip() if pd.notna(t) else ""
         cols = ["NOME", "CARGO", "ÁREA", "LIDER DIRETO", "Descricao_Area", "Info_Posicao", "SUB-ÁREA", "CLASSIFICAÇÃO"]
         for c in cols:
-            if c in df.columns: df[c] = df[c].apply(limpar)
-
+            if c in df.columns:
+                df[c] = df[c].apply(limpar)
         df = df[df["ÁREA"] != ""]
         df["ÁREA"] = df["ÁREA"].apply(lambda x: x.upper())
-        # Resolver nomes abreviados em LIDER DIRETO para o nome completo da base
         lista_nomes = df["NOME"].tolist()
         df["LIDER DIRETO"] = df["LIDER DIRETO"].apply(lambda l: _resolver_lider(l, lista_nomes))
         return df
+
     try:
         df = carregar()
-        if "area_selecionada" not in st.session_state:
-            st.session_state.area_selecionada = "Empresa inteira"
+
+        # ── Inicializa estado dos filtros ────────────────────────────────────
+        if "area_idx" not in st.session_state:
+            st.session_state.area_idx = 0          # 0 = "Empresa inteira"
+        if "nome_idx" not in st.session_state:
+            st.session_state.nome_idx = 0          # 0 = "Nenhum selecionado"
+
+        opcoes_area = ["Empresa inteira"] + sorted(df["ÁREA"].unique().tolist())
+        opcoes_nome = ["Nenhum selecionado"] + sorted(df["NOME"].unique().tolist())
+
+        # ── Callbacks para manter os dois selects sincronizados ──────────────
+        def on_area_change():
+            """Quando a área muda, limpa a seleção de colaborador."""
+            st.session_state.nome_idx = 0
+
+        def on_nome_change():
+            """Quando um colaborador é selecionado, atualiza a área para a dele."""
+            nome_sel = st.session_state["select_nome"]
+            if nome_sel != "Nenhum selecionado":
+                area_do_colaborador = df[df["NOME"] == nome_sel]["ÁREA"].values[0]
+                if area_do_colaborador in opcoes_area:
+                    st.session_state.area_idx = opcoes_area.index(area_do_colaborador)
+            else:
+                # Não altera a área ao desselecionar
+                pass
+
+        # ── Linha de controles ───────────────────────────────────────────────
         c1, c2, c3 = st.columns([2, 2, 0.8])
-        with c2:
-            busca_nome = st.selectbox("Localizar Colaborador:", ["Nenhum selecionado"] + sorted(df["NOME"].unique().tolist()))
-            if busca_nome != "Nenhum selecionado":
-                st.session_state.area_selecionada = df[df["NOME"] == busca_nome]["ÁREA"].values[0]
+
         with c1:
-            opcoes_area = ["Empresa inteira"] + sorted(df["ÁREA"].unique().tolist())
-            area_sel = st.selectbox("Área de Visão:", opcoes_area, index=opcoes_area.index(st.session_state.area_selecionada))
-            st.session_state.area_selecionada = area_sel
+            area_sel = st.selectbox(
+                "Área de Visão:",
+                opcoes_area,
+                index=st.session_state.area_idx,
+                key="select_area",
+                on_change=on_area_change,
+            )
+            # Atualiza índice para manter sincronizado após rerun
+            st.session_state.area_idx = opcoes_area.index(area_sel)
+
+        with c2:
+            busca_nome = st.selectbox(
+                "Localizar Colaborador:",
+                opcoes_nome,
+                index=st.session_state.nome_idx,
+                key="select_nome",
+                on_change=on_nome_change,
+            )
+            st.session_state.nome_idx = opcoes_nome.index(busca_nome)
+
         with c3:
             st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
             if st.button("SAIR"):
                 st.session_state.logado = False
                 st.rerun()
+
+        # ── Lê os valores selecionados do session_state (pós-callback) ───────
+        area_sel  = st.session_state["select_area"]
+        busca_nome = st.session_state["select_nome"]
+
+        # ── Info boxes do colaborador selecionado ────────────────────────────
         if busca_nome != "Nenhum selecionado":
             pessoa = df[df["NOME"] == busca_nome].iloc[0]
             i1, i2 = st.columns(2)
-            with i1: st.markdown(f'<div class="info-box"><div class="info-label">DESCRIÇÃO DA ÁREA: {pessoa["ÁREA"]}</div><div class="info-text">{pessoa["Descricao_Area"]}</div></div>', unsafe_allow_html=True)
-            with i2: st.markdown(f'<div class="info-box"><div class="info-label">INFO DA POSIÇÃO: {pessoa["CARGO"]}</div><div class="info-text">{pessoa["Info_Posicao"]}</div></div>', unsafe_allow_html=True)
-        df_view = df.copy() if area_sel == "Empresa inteira" else pd.concat([df[df["ÁREA"] == area_sel], df[df["NOME"].isin(df[df["ÁREA"] == area_sel]["LIDER DIRETO"].unique())]]).drop_duplicates()
-        palette = ["#FF00FF", "#00FFFF", "#FFFF00", "#FF4500", "#32CD32", "#7B68EE", "#FF1493", "#A9A9A9", "#ADFF2F", "#FFD700"]
+            with i1:
+                st.markdown(
+                    f'<div class="info-box"><div class="info-label">DESCRIÇÃO DA ÁREA: {pessoa["ÁREA"]}</div>'
+                    f'<div class="info-text">{pessoa["Descricao_Area"]}</div></div>',
+                    unsafe_allow_html=True
+                )
+            with i2:
+                st.markdown(
+                    f'<div class="info-box"><div class="info-label">INFO DA POSIÇÃO: {pessoa["CARGO"]}</div>'
+                    f'<div class="info-text">{pessoa["Info_Posicao"]}</div></div>',
+                    unsafe_allow_html=True
+                )
+
+        # ── Filtro do dataframe para o organograma ───────────────────────────
+        if area_sel == "Empresa inteira":
+            df_view = df.copy()
+        else:
+            # Colaboradores da área + líderes deles (mesmo que estejam em outra área)
+            df_area = df[df["ÁREA"] == area_sel]
+            lideres_da_area = df_area["LIDER DIRETO"].dropna().unique().tolist()
+            df_lideres = df[df["NOME"].isin(lideres_da_area)]
+            df_view = pd.concat([df_area, df_lideres]).drop_duplicates(subset=["NOME"])
+
+        # ── Paleta de cores ──────────────────────────────────────────────────
+        palette = ["#FF00FF", "#00FFFF", "#FFFF00", "#FF4500", "#32CD32",
+                   "#7B68EE", "#FF1493", "#A9A9A9", "#ADFF2F", "#FFD700"]
         unique_areas = sorted(df["ÁREA"].unique())
         area_color = {a: palette[i % len(palette)] for i, a in enumerate(unique_areas)}
+
+        # ── Layout legenda + organograma ─────────────────────────────────────
         col_legenda, col_organograma = st.columns([1, 4.5])
+
         with col_legenda:
             st.markdown('<div class="legend-container"><div style="font-weight:900; margin-bottom:15px; font-size: 0.9rem;">LEGENDA</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="legend-item"><div class="legend-color" style="background:#000000"></div>COLABORADOR SELECIONADO</div>', unsafe_allow_html=True)
+            st.markdown('<div class="legend-item"><div class="legend-color" style="background:#000000"></div>COLABORADOR SELECIONADO</div>', unsafe_allow_html=True)
             st.markdown('<hr style="margin: 10px 0; border: 0; border-top: 1px solid #eee;">', unsafe_allow_html=True)
             for area, color in area_color.items():
                 if area.strip():
                     st.markdown(f'<div class="legend-item"><div class="legend-color" style="background:{color}"></div>{area}</div>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
+
         with col_organograma:
             nodes = []
             for _, row in df_view.iterrows():
                 nome, cargo = row["NOME"], row["CARGO"]
-                is_ceo = "CEO" in cargo.upper() or "EID" in nome.upper()
-                is_lider = any(x in cargo.upper() for x in ["GERENTE", "DIRETOR", "HEAD", "LEAD", "COORDENADOR"])
+                is_ceo    = "CEO" in cargo.upper() or "EID" in nome.upper()
+                is_lider  = any(x in cargo.upper() for x in ["GERENTE", "DIRETOR", "HEAD", "LEAD", "COORDENADOR"])
 
-                size, width, border_w, margin = (300, 2000, 15, 60) if is_ceo else (180, 1400, 10, 45) if is_lider else (120, 900, 4, 30)
+                size, width, border_w, margin = (
+                    (300, 2000, 15, 60) if is_ceo else
+                    (180, 1400, 10, 45) if is_lider else
+                    (120, 900,  4,  30)
+                )
 
-                cor_base = area_color.get(row["ÁREA"], "#6347ff")
+                cor_base  = area_color.get(row["ÁREA"], "#7443F6")
                 cor_fonte = "#000000"
                 cor_borda = escurecer_cor(cor_base) if (is_ceo or is_lider) else cor_base
 
                 if busca_nome != "Nenhum selecionado" and nome == busca_nome:
-                    cor_base = "#000000"
+                    cor_base  = "#000000"
                     cor_fonte = "#FFFFFF"
                     cor_borda = "#000000"
+
                 nodes.append({
-                    "id": nome, "label": f"{nome}|{cargo}",
+                    "id": nome,
+                    "label": f"{nome}|{cargo}",
                     "color": {"background": cor_base, "border": cor_borda},
-                    "font": {"color": cor_fonte, "size": size, "face": "Inter", "multi": "md", "bold": {"color": cor_fonte}},
-                    "widthConstraint": {"maximum": width}, "borderWidth": border_w, "shadow": True,
-                    "margin": margin
+                    "font": {"color": cor_fonte, "size": size, "face": "Manrope",
+                             "multi": "md", "bold": {"color": cor_fonte}},
+                    "widthConstraint": {"maximum": width},
+                    "borderWidth": border_w,
+                    "shadow": True,
+                    "margin": margin,
                 })
 
-            edges = [{"from": row["LIDER DIRETO"], "to": row["NOME"], "arrows": "to", "color": "#000000", "width": 8}
-                     for _, row in df_view.iterrows() if row["LIDER DIRETO"] and row["LIDER DIRETO"] in df_view["NOME"].values]
+            # Apenas arestas cujos dois extremos existem em df_view
+            nomes_view = set(df_view["NOME"].values)
+            edges = [
+                {"from": row["LIDER DIRETO"], "to": row["NOME"],
+                 "arrows": "to", "color": "#000000", "width": 8}
+                for _, row in df_view.iterrows()
+                if row["LIDER DIRETO"] and row["LIDER DIRETO"] in nomes_view
+            ]
+
             html_vis = f"""
             <div id="loading" style="height:850px; width:100%; background:#ffffff; border-radius:20px;
                 display:flex; align-items:center; justify-content:center; flex-direction:column; gap:16px;">
-                <div style="width:48px;height:48px;border:5px solid #eee;border-top-color:#6347ff;
+                <div style="width:48px;height:48px;border:5px solid #eee;border-top-color:#7443F6;
                     border-radius:50%;animation:spin 0.8s linear infinite;"></div>
-                <span style="color:#6347ff;font-family:Inter,sans-serif;font-weight:700;font-size:1rem;">
+                <span style="color:#7443F6;font-family:Manrope,sans-serif;font-weight:700;font-size:1rem;">
                     Montando organograma...</span>
             </div>
             <div id="network" style="height:850px; width:100%; background:#ffffff; border-radius:20px; display:none;"></div>
@@ -182,8 +275,6 @@ else:
             var nodesRaw = {json.dumps(nodes)};
             nodesRaw.forEach(node => {{ var p = node.label.split('|'); node.label = '*' + p[0] + '*\\n\\n' + p[1]; }});
 
-            // Web Worker: dispara ticks a ~60fps mesmo com a aba em segundo plano,
-            // evitando que o browser throttle o requestAnimationFrame durante a estabilização.
             try {{
                 var _wc = 'setInterval(function(){{postMessage(1)}},16)';
                 var _wb = new Blob([_wc], {{type:'text/javascript'}});
@@ -197,7 +288,7 @@ else:
             }} catch(e) {{}}
 
             var options = {{
-                nodes: {{ shape: "box", font: {{ face: 'Inter', multi: 'md' }} }},
+                nodes: {{ shape: "box", font: {{ face: 'Manrope', multi: 'md' }} }},
                 physics: {{
                     enabled: true,
                     solver: "forceAtlas2Based",
@@ -217,7 +308,6 @@ else:
                 options
             );
 
-            // Após 5s, mostra o organograma independente da estabilização
             setTimeout(function() {{
                 document.getElementById("loading").style.display = "none";
                 document.getElementById("network").style.display = "block";
@@ -228,7 +318,6 @@ else:
                 }}
             }}, 5000);
 
-            // Quando estabilizar de vez, desliga a física
             network.on("stabilized", function () {{
                 network.setOptions({{ physics: false }});
                 document.getElementById("loading").style.display = "none";
@@ -236,5 +325,8 @@ else:
             }});
             </script>
             """
+
             components.html(html_vis, height=900)
-    except Exception as e: st.error(f"Erro: {e}")
+
+    except Exception as e:
+        st.error(f"Erro: {e}")
