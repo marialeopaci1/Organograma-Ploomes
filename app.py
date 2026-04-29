@@ -4,7 +4,7 @@ import streamlit.components.v1 as components
 import json
 import colorsys
 
-# --- 1. CONFIGURAÇÃO INICIAL E LOGIN ---
+# --- 1. CONFIGURAÇÃO E LOGIN ---
 st.set_page_config(page_title="Portal RH | Ploomes", layout="wide", initial_sidebar_state="collapsed")
 
 if "logado" not in st.session_state: st.session_state.logado = False
@@ -35,7 +35,7 @@ lista_nomes = sorted(df["NOME"].unique().tolist())
 lista_areas = sorted(df["ÁREA"].unique().tolist())
 nome_para_area = dict(zip(df["NOME"], df["ÁREA"]))
 
-# --- 3. ESTADO E CALLBACKS ---
+# --- 3. ESTADO E FILTROS ---
 if "sel_area" not in st.session_state: st.session_state.sel_area = "Empresa inteira"
 if "sel_nome" not in st.session_state: st.session_state.sel_nome = "Nenhum selecionado"
 
@@ -74,42 +74,45 @@ with c2:
                 on_change=mudar_colaborador)
 with c3:
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-    st.button("🌐 VOLTAR PARA EMPRESA INTEIRA", on_click=voltar_empresa_inteira, use_container_width=True)
+    st.button("🌐 VER EMPRESA INTEIRA", on_click=voltar_empresa_inteira, use_container_width=True)
 with c4:
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
     if st.button("SAIR", use_container_width=True):
         st.session_state.logado = False
         st.rerun()
 
-# --- 5. DESCRIÇÕES EXIBIDAS (Descricao_Area e Info_Posicao) ---
+# --- 5. EXIBIÇÃO DE DESCRIÇÕES (RESTAURADO E CORRIGIDO) ---
+# Esta parte agora está fora de colunas complexas para garantir que apareça sempre
 if st.session_state.sel_area != "Empresa inteira" or st.session_state.sel_nome != "Nenhum selecionado":
-    st.write("") # Espaçador
-    col_info1, col_info2 = st.columns(2)
+    st.write("") # Espaçador visual
     
-    with col_info1:
-        # Puxa Descricao_Area
-        area_alvo = st.session_state.sel_area
-        desc_text = df[df["ÁREA"] == area_alvo]["Descricao_Area"].iloc[0] if area_alvo != "Empresa inteira" else ""
-        if desc_text:
-            st.info(f"**Sobre a área {area_alvo}:**\n\n{desc_text}")
-            
-    with col_info2:
-        # Puxa Info_Posicao
-        if st.session_state.sel_nome != "Nenhum selecionado":
-            pos_text = df[df["NOME"] == st.session_state.sel_nome]["Info_Posicao"].iloc[0]
-            if pos_text:
-                st.success(f"**Posição de {st.session_state.sel_nome}:**\n\n{pos_text}")
+    # Busca dados da área
+    area_atual = st.session_state.sel_area
+    filtro_area = df[df["ÁREA"] == area_atual]
+    
+    # Se uma área específica estiver selecionada, mostra a descrição dela
+    if not filtro_area.empty and area_atual != "Empresa inteira":
+        descricao = filtro_area["Descricao_Area"].iloc[0]
+        if descricao and descricao != "":
+            st.info(f"**Sobre a área {area_atual}:** {descricao}")
 
-# --- 6. ORGANOGRAMA E CSS ---
+    # Se um colaborador estiver localizado, mostra a info da posição dele
+    if st.session_state.sel_nome != "Nenhum selecionado":
+        filtro_colab = df[df["NOME"] == st.session_state.sel_nome]
+        if not filtro_colab.empty:
+            info_pos = filtro_colab["Info_Posicao"].iloc[0]
+            if info_pos and info_pos != "":
+                st.success(f"**Informação da Posição ({st.session_state.sel_nome}):** {info_pos}")
+
+# --- 6. ORGANOGRAMA ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap');
 html, body, [class*="st-"] { font-family: 'Manrope', sans-serif; }
 .legend-sidebar { background: white; border-radius: 12px; padding: 15px; border: 1px solid #eee; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
 .legend-item { display: flex; align-items: center; margin-bottom: 8px; font-size: 0.85rem; font-weight: 700; }
-.legend-color { width: 18px; height: 18px; border-radius: 4px; margin-right: 12px; border: 1px solid rgba(0,0,0,0.1); }
+.legend-color { width: 18px; height: 18px; border-radius: 4px; margin-right: 12px; }
 
-/* Overlay de Loading */
 #loading-overlay {
     position: absolute; top:0; left:0; width:100%; height:100%;
     background: white; display:flex; flex-direction:column;
@@ -137,16 +140,15 @@ with col_side:
     st.markdown('</div>', unsafe_allow_html=True)
 
 with col_main:
+    # Filtro de visualização
     if st.session_state.sel_area == "Empresa inteira":
         df_view = df
-        repulsao = -1200
-        distancia_mola = 180
+        repulsao = -1000
     else:
         df_view = df[df["ÁREA"] == st.session_state.sel_area]
-        lideres_nomes = df_view["LIDER DIRETO"].unique()
-        df_view = pd.concat([df_view, df[df["NOME"].isin(lideres_nomes)]]).drop_duplicates(subset=["NOME"])
-        repulsao = -700
-        distancia_mola = 150
+        lideres = df_view["LIDER DIRETO"].unique()
+        df_view = pd.concat([df_view, df[df["NOME"].isin(lideres)]]).drop_duplicates(subset=["NOME"])
+        repulsao = -600
 
     nodes = []
     for _, row in df_view.iterrows():
@@ -156,14 +158,13 @@ with col_main:
         if n == st.session_state.sel_nome: cor_b, cor_f = "#2B7CE9", "#FFFFFF"
 
         nodes.append({
-            "id": n, 
-            "label": f"<b>{n}</b>\n{row['CARGO']}",
+            "id": n, "label": f"<b>{n}</b>\n{row['CARGO']}",
             "color": {"background": cor_b, "border": escurecer_cor(cor_b)},
-            "font": {"multi": "html", "color": cor_f, "face": "Manrope", "size": 26},
-            "shape": "box", "margin": 18, "borderWidth": 2
+            "font": {"multi": "html", "color": cor_f, "face": "Manrope", "size": 28}, # Aumentado
+            "shape": "box", "margin": 15
         })
 
-    # SETA MAIS ESCURA E GROSSA (Black #000000)
+    # Setas pretas e grossas
     edges = [{"from": r["LIDER DIRETO"], "to": r["NOME"], "arrows": "to", "color": "#000000", "width": 3} 
              for _, r in df_view.iterrows() if r["LIDER DIRETO"] in df_view["NOME"].values]
 
@@ -171,9 +172,8 @@ with col_main:
     <div id="loading-overlay">
         <div class="spinner"></div>
         <div style="font-weight:700; color:#7443F6; font-family:sans-serif; font-size:1.2rem;">Montando o organograma...</div>
-        <div style="color:#999; margin-top:10px; font-family:sans-serif;">Estabilizando visualização</div>
     </div>
-    <div id="mynetwork" style="height: 750px; background: white; border-radius:15px; border: 1px solid #f0f0f0;"></div>
+    <div id="mynetwork" style="height: 750px; background: white; border-radius:15px;"></div>
     <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
     <script>
         var container = document.getElementById('mynetwork');
@@ -182,10 +182,10 @@ with col_main:
             physics: {{
                 enabled: true,
                 solver: 'forceAtlas2Based',
-                forceAtlas2Based: {{ gravitationalConstant: {repulsao}, centralGravity: 0.005, springLength: {distancia_mola}, avoidOverlap: 1 }},
+                forceAtlas2Based: {{ gravitationalConstant: {repulsao}, centralGravity: 0.005, springLength: 180, avoidOverlap: 1 }},
                 stabilization: {{ iterations: 200 }}
             }},
-            interaction: {{ dragNodes: true, zoomView: true, dragView: true, hover: true }}
+            interaction: {{ dragNodes: true, zoomView: true, dragView: true }}
         }};
         var network = new vis.Network(container, data, options);
         
@@ -194,15 +194,12 @@ with col_main:
             setTimeout(() => {{ document.getElementById('loading-overlay').style.display = 'none'; }}, 800);
         }}
 
-        // Carregamento de 10 segundos para estabilizar
-        setTimeout(hideLoading, 10000);
+        setTimeout(hideLoading, 10000); // 10 segundos de loading garantido
 
         network.once('stabilized', function() {{
             var search = "{st.session_state.sel_nome}";
             if(search !== "Nenhum selecionado") {{
                 network.focus(search, {{ scale: 0.7, animation: true }});
-            }} else {{
-                network.fit();
             }}
             hideLoading();
         }});
