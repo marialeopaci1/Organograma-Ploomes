@@ -70,12 +70,10 @@ def carregar_dados():
 
 df = carregar_dados()
 
-# Mapeamentos para performance
 lista_nomes = sorted(df["NOME"].unique().tolist())
 lista_areas = sorted(df["ÁREA"].unique().tolist())
 nome_para_area = dict(zip(df["NOME"], df["ÁREA"]))
 
-# --- ESTADO DOS FILTROS ---
 if "sel_area" not in st.session_state:
     st.session_state.sel_area = "Empresa inteira"
 if "sel_nome" not in st.session_state:
@@ -115,7 +113,6 @@ with c3:
         st.session_state.logado = False
         st.rerun()
 
-# --- LÓGICA DE FILTRAGEM ---
 area_sel = st.session_state.sel_area
 busca_nome = st.session_state.sel_nome
 
@@ -162,7 +159,7 @@ for _, row in df_view.iterrows():
 edges = [{"from": r["LIDER DIRETO"], "to": r["NOME"], "arrows": "to", "color": "#888888"} 
          for _, r in df_view.iterrows() if r["LIDER DIRETO"] in df_view["NOME"].values]
 
-# --- HTML/JS (FÍSICA ORIGINAL MELHORADA) ---
+# --- HTML/JS (FÍSICA FLUTUANTE EXPANSIVA) ---
 html_vis = f"""
 <div id="mynetwork" style="height: 800px; background: #ffffff;"></div>
 <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
@@ -177,16 +174,16 @@ html_vis = f"""
             enabled: true,
             solver: 'forceAtlas2Based',
             forceAtlas2Based: {{
-                gravitationalConstant: -100, // Força de repulsão para não embolar
-                centralGravity: 0.005,       // Puxa levemente para o centro
-                springLength: 200,          // Tamanho das "molas" entre líder e liderado
-                springConstant: 0.08,
-                avoidOverlap: 1             // CRÍTICO: Impede um nó de ficar em cima do outro
+                gravitationalConstant: -1000, // Aumentei MUITO a repulsão para espalhar os nomes
+                centralGravity: 0.001,       // Quase nenhuma gravidade central (evita o "bolo")
+                springLength: 350,          // Molas bem longas para dar espaço entre níveis
+                springConstant: 0.05,
+                avoidOverlap: 1              // Força a separação total
             }},
             stabilization: {{
                 enabled: true,
-                iterations: 100,            // Pré-calcula a posição antes de mostrar
-                updateInterval: 25
+                iterations: 200,            // Mais tempo calculando "escondido" para já aparecer pronto
+                updateInterval: 50
             }}
         }},
         interaction: {{ dragNodes: true, zoomView: true, dragView: true }}
@@ -194,17 +191,15 @@ html_vis = f"""
     
     var network = new vis.Network(container, data, options);
 
-    // Quando terminar de "flutuar" e parar, desligamos a física para economizar CPU
+    // Ajusta o zoom assim que o cálculo pesado termina
     network.on("stabilizationIterationsDone", function () {{
-        network.setOptions({{ physics: false }});
+        network.fit();
     }});
 
     var search = "{busca_nome}";
     if(search !== "Nenhum selecionado") {{
         network.focus(search, {{ scale: 0.9, animation: true }});
         network.selectNodes([search]);
-    }} else {{
-        network.fit();
     }}
 </script>
 """
