@@ -3,7 +3,6 @@ import pandas as pd
 import streamlit.components.v1 as components
 import json
 import colorsys
-import unicodedata
 
 # --- 1. CONFIGURAÇÃO INICIAL E LOGIN ---
 st.set_page_config(page_title="Portal RH | Ploomes", layout="wide", initial_sidebar_state="collapsed")
@@ -36,11 +35,10 @@ lista_nomes = sorted(df["NOME"].unique().tolist())
 lista_areas = sorted(df["ÁREA"].unique().tolist())
 nome_para_area = dict(zip(df["NOME"], df["ÁREA"]))
 
-# --- 3. ESTADO DOS FILTROS ---
+# --- 3. ESTADO E CALLBACKS ---
 if "sel_area" not in st.session_state: st.session_state.sel_area = "Empresa inteira"
 if "sel_nome" not in st.session_state: st.session_state.sel_nome = "Nenhum selecionado"
 
-# Funções de callback para os menus
 def mudar_colaborador():
     novo_nome = st.session_state.sb_nome
     if novo_nome != "Nenhum selecionado":
@@ -76,36 +74,45 @@ with c2:
                 on_change=mudar_colaborador)
 with c3:
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-    st.button("🌐 VER EMPRESA INTEIRA", on_click=voltar_empresa_inteira, use_container_width=True)
+    st.button("🌐 VOLTAR PARA EMPRESA INTEIRA", on_click=voltar_empresa_inteira, use_container_width=True)
 with c4:
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
     if st.button("SAIR", use_container_width=True):
         st.session_state.logado = False
         st.rerun()
 
-# --- 5. TEXTOS INFORMATIVOS (RESTAURADOS) ---
+# --- 5. DESCRIÇÕES DA PLANILHA (CORRIGIDO) ---
 if st.session_state.sel_area != "Empresa inteira" or st.session_state.sel_nome != "Nenhum selecionado":
+    st.markdown("---")
     i1, i2 = st.columns(2)
     with i1:
-        # Se houver colaborador, mostra a descrição da área dele, se não, da área selecionada
-        area_ref = st.session_state.sel_area
-        desc = df[df["ÁREA"] == area_ref]["Descricao_Area"].iloc[0] if area_ref != "Empresa inteira" else ""
-        if desc:
-            st.markdown(f"**Sobre a área {area_ref}:**\n{desc}")
+        # Puxa a descrição da área selecionada ou da área do colaborador selecionado
+        area_atual = st.session_state.sel_area
+        dados_area = df[df["ÁREA"] == area_atual]
+        if not dados_area.empty:
+            # Puxa da coluna 'Descricao_Area' da planilha
+            desc = dados_area["Descricao_Area"].iloc[0]
+            if desc:
+                st.info(f"**Sobre a área {area_atual}:**\n\n{desc}")
     with i2:
+        # Puxa a info da posição do colaborador selecionado
         if st.session_state.sel_nome != "Nenhum selecionado":
-            posicao = df[df["NOME"] == st.session_state.sel_nome]["Info_Posicao"].iloc[0]
-            if posicao:
-                st.markdown(f"**Posição de {st.session_state.sel_nome}:**\n{posicao}")
+            dados_colab = df[df["NOME"] == st.session_state.sel_nome]
+            if not dados_colab.empty:
+                # Puxa da coluna 'Info_Posicao' da planilha
+                pos_info = dados_colab["Info_Posicao"].iloc[0]
+                if pos_info:
+                    st.success(f"**Posição de {st.session_state.sel_nome}:**\n\n{pos_info}")
+    st.markdown("---")
 
-# --- 6. LAYOUT COM LEGENDA LATERAL ---
+# --- 6. ORGANOGRAMA ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap');
 html, body, [class*="st-"] { font-family: 'Manrope', sans-serif; }
-.legend-sidebar { background: white; border-radius: 12px; padding: 12px; border: 1px solid #eee; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-.legend-item { display: flex; align-items: center; margin-bottom: 8px; font-size: 0.8rem; font-weight: 600; }
-.legend-color { width: 16px; height: 16px; border-radius: 4px; margin-right: 10px; }
+.legend-sidebar { background: white; border-radius: 12px; padding: 15px; border: 1px solid #eee; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+.legend-item { display: flex; align-items: center; margin-bottom: 8px; font-size: 0.85rem; font-weight: 700; }
+.legend-color { width: 18px; height: 18px; border-radius: 4px; margin-right: 12px; border: 1px solid rgba(0,0,0,0.1); }
 </style>
 """, unsafe_allow_html=True)
 
@@ -122,35 +129,43 @@ with col_side:
     st.markdown('</div>', unsafe_allow_html=True)
 
 with col_main:
-    # Filtro de dados
     if st.session_state.sel_area == "Empresa inteira":
         df_view = df
-        repulsao = -1500 # Mais repulsão para a empresa inteira não embolar
+        repulsao = -1200 # Reduzido para aproximar os cards
+        distancia_mola = 180 # Reduzido para aproximar os cards
     else:
         df_view = df[df["ÁREA"] == st.session_state.sel_area]
         lideres_nomes = df_view["LIDER DIRETO"].unique()
         df_view = pd.concat([df_view, df[df["NOME"].isin(lideres_nomes)]]).drop_duplicates(subset=["NOME"])
-        repulsao = -800
+        repulsao = -700
+        distancia_mola = 150
 
     nodes = []
     for _, row in df_view.iterrows():
         n = row["NOME"]
         cor_b = area_color.get(row["ÁREA"], "#7443F6")
         cor_f = "#000000"
-        if n == st.session_state.sel_nome: cor_b, cor_f = "#2B7CE9", "#FFFFFF"
+        
+        # Destaque para o selecionado
+        if n == st.session_state.sel_nome: 
+            cor_b, cor_f = "#2B7CE9", "#FFFFFF"
 
         nodes.append({
-            "id": n, "label": f"<b>{n}</b>\n{row['CARGO']}",
+            "id": n, 
+            "label": f"<b>{n}</b>\n{row['CARGO']}",
             "color": {"background": cor_b, "border": escurecer_cor(cor_b)},
-            "font": {"multi": "html", "color": cor_f, "face": "Manrope", "size": 20},
-            "shape": "box", "margin": 15
+            # TAMANHO DA LETRA AUMENTADO PARA 26 (Nome) e mantido proporcional
+            "font": {"multi": "html", "color": cor_f, "face": "Manrope", "size": 26},
+            "shape": "box", 
+            "margin": 18,
+            "borderWidth": 2
         })
 
-    edges = [{"from": r["LIDER DIRETO"], "to": r["NOME"], "arrows": "to", "color": "#888888"} 
+    edges = [{"from": r["LIDER DIRETO"], "to": r["NOME"], "arrows": "to", "color": "#BBBBBB", "width": 1.5} 
              for _, r in df_view.iterrows() if r["LIDER DIRETO"] in df_view["NOME"].values]
 
     html_vis = f"""
-    <div id="mynetwork" style="height: 750px; background: white; border-radius:15px;"></div>
+    <div id="mynetwork" style="height: 750px; background: white; border-radius:15px; border: 1px solid #f0f0f0;"></div>
     <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
     <script>
         var container = document.getElementById('mynetwork');
@@ -159,17 +174,22 @@ with col_main:
             physics: {{
                 enabled: true,
                 solver: 'forceAtlas2Based',
-                forceAtlas2Based: {{ gravitationalConstant: {repulsao}, centralGravity: 0.005, springLength: 200, avoidOverlap: 1 }},
-                stabilization: {{ iterations: 200 }}
+                forceAtlas2Based: {{ 
+                    gravitationalConstant: {repulsao}, 
+                    centralGravity: 0.005, 
+                    springLength: {distancia_mola}, 
+                    avoidOverlap: 1 
+                }},
+                stabilization: {{ iterations: 150 }}
             }},
-            interaction: {{ dragNodes: true, zoomView: true, dragView: true }}
+            interaction: {{ dragNodes: true, zoomView: true, dragView: true, hover: true }}
         }};
         var network = new vis.Network(container, data, options);
         
         network.once('stabilized', function() {{
             var search = "{st.session_state.sel_nome}";
             if(search !== "Nenhum selecionado") {{
-                network.focus(search, {{ scale: 0.6, animation: true }});
+                network.focus(search, {{ scale: 0.7, animation: true }});
             }} else {{
                 network.fit();
             }}
