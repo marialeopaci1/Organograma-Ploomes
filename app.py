@@ -14,8 +14,9 @@ if "sel_nome" not in st.session_state: st.session_state.sel_nome = "Nenhum selec
 if "logado" not in st.session_state: st.session_state.logado = False
 
 # Captura clique vindo do gráfico (via URL)
-if "colab" in st.query_params:
-    st.session_state.sel_nome = st.query_params["colab"]
+query_params = st.query_params
+if "colab" in query_params:
+    st.session_state.sel_nome = query_params["colab"]
 
 # --- 2. FUNÇÕES DE SUPORTE ---
 def _normalizar(texto):
@@ -55,15 +56,14 @@ def carregar_dados():
 df = carregar_dados()
 lista_nomes = sorted(df["NOME"].unique().tolist())
 lista_areas = sorted(df["ÁREA"].unique().tolist())
-# Dicionário para busca rápida de área por nome
 nome_para_area = dict(zip(df["NOME"], df["ÁREA"]))
 
-# --- LÓGICA DE FILTRO AUTOMÁTICO (O QUE VOCÊ PEDIU) ---
-# Se um colaborador foi localizado, forçamos a área de visão a ser a dele
+# --- LÓGICA DE FILTRO AUTOMÁTICO CRÍTICA ---
+# Se o nome mudar (via selectbox ou clique), a área muda ANTES de qualquer renderização
 if st.session_state.sel_nome != "Nenhum selecionado":
-    area_do_colaborador = nome_para_area.get(st.session_state.sel_nome)
-    if area_do_colaborador:
-        st.session_state.sel_area = area_do_colaborador
+    nova_area = nome_para_area.get(st.session_state.sel_nome)
+    if nova_area and st.session_state.sel_area != nova_area:
+        st.session_state.sel_area = nova_area
 
 # --- 4. CSS ---
 st.markdown("""
@@ -116,7 +116,6 @@ with c1:
                             index=(["Empresa inteira"] + lista_areas).index(st.session_state.sel_area))
     st.session_state.sel_area = area_sel
 with c2:
-    # Se a área mudou manualmente, poderíamos resetar o nome, mas manter é melhor para navegação
     busca_nome = st.selectbox("🔍 Localizar Colaborador:", ["Nenhum selecionado"] + lista_nomes, 
                               key="sb_nome", 
                               index=(["Nenhum selecionado"] + lista_nomes).index(st.session_state.sel_nome))
@@ -128,24 +127,25 @@ with c3:
         st.query_params.clear()
         st.rerun()
 
-# --- 7. ORGANOGRAMA ---
+# --- 7. PROCESSAMENTO DO ORGANOGRAMA ---
 col_side, col_main = st.columns([0.8, 5])
 
 with col_side:
     palette = ["#FF00FF","#00FFFF","#FFFF00","#FF4500","#32CD32","#7B68EE","#FF1493","#A9A9A9","#ADFF2F","#FFD700"]
     area_color = {a: palette[i % len(palette)] for i, a in enumerate(lista_areas)}
     st.markdown('<div class="legend-sidebar"><div class="legend-title">Legenda</div>', unsafe_allow_html=True)
-    # Legenda corrigida: Azul para selecionado
     st.markdown('<div class="legend-item"><div class="legend-color" style="background:#2B7CE9; border:1px solid #000"></div>SELECIONADO</div>', unsafe_allow_html=True)
     for area, color in area_color.items():
         st.markdown(f'<div class="legend-item"><div class="legend-color" style="background:{color}"></div>{area}</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
 with col_main:
-    # Filtragem de dados
-    if area_sel == "Empresa inteira": df_view = df
+    # FILTRO FINAL: Só mostramos a área selecionada
+    if area_sel == "Empresa inteira": 
+        df_view = df
     else:
         df_area = df[df["ÁREA"] == area_sel]
+        # Pegamos os líderes dessa área para manter a conexão
         lideres = df_area["LIDER DIRETO"].unique()
         df_view = pd.concat([df_area, df[df["NOME"].isin(lideres)]]).drop_duplicates(subset=["NOME"])
 
@@ -170,10 +170,11 @@ with col_main:
     edges = [{"from": r["LIDER DIRETO"], "to": r["NOME"], "arrows": "to", "color": "#888888", "width": 5} 
              for _, r in df_view.iterrows() if r["LIDER DIRETO"] in df_view["NOME"].values]
 
+    # --- HTML COM PERSISTÊNCIA DE CARREGAMENTO ---
     html_vis = f"""
     <div id="loading-overlay">
         <div class="spinner"></div>
-        <div style="font-weight:700; color:#7443F6; font-family:sans-serif;">Montando o organograma...</div>
+        <div style="font-weight:700; color:#7443F6; font-family:sans-serif; font-size:1.2rem;">Montando o organograma...</div>
         <div style="color:#999; margin-top:10px; font-family:sans-serif; font-size:0.8rem;">Estabilizando posições</div>
     </div>
     <div id="mynetwork" style="height: 850px; background: #ffffff;"></div>
@@ -188,8 +189,17 @@ with col_main:
             physics: {{
                 enabled: true,
                 solver: 'forceAtlas2Based',
-                forceAtlas2Based: {{ gravitationalConstant: -4500, centralGravity: 0.005, springLength: 650, avoidOverlap: 1 }},
-                stabilization: {{ iterations: 350 }}
+                forceAtlas2Based: {{ 
+                    gravitationalConstant: -4500, 
+                    centralGravity: 0.005, 
+                    springLength: 650, 
+                    avoidOverlap: 1 
+                }},
+                stabilization: {{ 
+                    enabled: true,
+                    iterations: 600, // Aumentado para o gráfico já aparecer estável
+                    updateInterval: 100
+                }}
             }},
             interaction: {{ dragNodes: true, zoomView: true, dragView: true }}
         }};
@@ -201,10 +211,10 @@ with col_main:
             setTimeout(() => {{ document.getElementById('loading-overlay').style.display = 'none'; }}, 800);
         }}
 
-        // Mantém o carregamento por 10 segundos
+        // Tempo de loading aumentado para 10s para garantir estabilidade em segundo plano
         setTimeout(hideLoading, 10000);
+        network.on("stabilizationIterationsDone", hideLoading);
 
-        // Clique para selecionar e filtrar automaticamente
         network.on("click", function (params) {{
             if (params.nodes.length > 0) {{
                 var nome = params.nodes[0];
