@@ -5,15 +5,15 @@ import json
 import colorsys
 import unicodedata
 
-# --- 1. CONFIGURAÇÃO E CAPTURA DE CLIQUE ---
+# --- 1. CONFIGURAÇÃO E SINCRONIZAÇÃO ---
 st.set_page_config(page_title="Portal RH | Ploomes", layout="wide", initial_sidebar_state="collapsed")
 
-# Inicialização de segurança
+# Inicialização segura do estado
 if "sel_area" not in st.session_state: st.session_state.sel_area = "Empresa inteira"
 if "sel_nome" not in st.session_state: st.session_state.sel_nome = "Nenhum selecionado"
 if "logado" not in st.session_state: st.session_state.logado = False
 
-# Captura clique via URL
+# Captura clique vindo do gráfico (via URL)
 if "colab" in st.query_params:
     st.session_state.sel_nome = st.query_params["colab"]
 
@@ -41,7 +41,31 @@ def escurecer_cor(hex_color, fator=0.20):
     new_rgb = colorsys.hls_to_rgb(hls[0], max(0, hls[1] - fator), min(1, hls[2] + 0.1))
     return '#%02x%02x%02x' % (int(new_rgb[0]*255), int(new_rgb[1]*255), int(new_rgb[2]*255))
 
-# --- 3. CSS ---
+# --- 3. CARGA DE DADOS ---
+@st.cache_data(ttl=3600)
+def carregar_dados():
+    url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTLRqVZ9LWZMaPQ9MFGvOcQ8i-_ljOeKPO8w1jpwTscup0VM1ERFYgwitfmH0Zjfo-u9-fjfd60goF1/pub?output=csv"
+    df = pd.read_csv(url).fillna("")
+    df.columns = df.columns.str.strip()
+    df["ÁREA"] = df["ÁREA"].str.upper().str.strip()
+    lista_nomes_completa = df["NOME"].unique().tolist()
+    df["LIDER DIRETO"] = df["LIDER DIRETO"].apply(lambda x: _resolver_lider_inteligente(x, lista_nomes_completa))
+    return df
+
+df = carregar_dados()
+lista_nomes = sorted(df["NOME"].unique().tolist())
+lista_areas = sorted(df["ÁREA"].unique().tolist())
+# Dicionário para busca rápida de área por nome
+nome_para_area = dict(zip(df["NOME"], df["ÁREA"]))
+
+# --- LÓGICA DE FILTRO AUTOMÁTICO (O QUE VOCÊ PEDIU) ---
+# Se um colaborador foi localizado, forçamos a área de visão a ser a dele
+if st.session_state.sel_nome != "Nenhum selecionado":
+    area_do_colaborador = nome_para_area.get(st.session_state.sel_nome)
+    if area_do_colaborador:
+        st.session_state.sel_area = area_do_colaborador
+
+# --- 4. CSS ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap');
@@ -61,7 +85,6 @@ header { visibility: hidden !important; }
     position: absolute; top:0; left:0; width:100%; height:100%;
     background: white; display:flex; flex-direction:column;
     align-items:center; justify-content:center; z-index:9999;
-    transition: opacity 0.8s ease;
 }
 .spinner {
     width: 60px; height: 60px; border: 6px solid #f3f3f3;
@@ -72,7 +95,7 @@ header { visibility: hidden !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 4. LOGIN ---
+# --- 5. LOGIN ---
 if not st.session_state.logado:
     _, col2, _ = st.columns([1, 1.2, 1])
     with col2:
@@ -85,36 +108,18 @@ if not st.session_state.logado:
                 st.rerun()
     st.stop()
 
-# --- 5. CARGA DE DADOS ---
-@st.cache_data(ttl=3600)
-def carregar_dados():
-    url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTLRqVZ9LWZMaPQ9MFGvOcQ8i-_ljOeKPO8w1jpwTscup0VM1ERFYgwitfmH0Zjfo-u9-fjfd60goF1/pub?output=csv"
-    df = pd.read_csv(url).fillna("")
-    df.columns = df.columns.str.strip()
-    df["ÁREA"] = df["ÁREA"].str.upper().str.strip()
-    lista_nomes_completa = df["NOME"].unique().tolist()
-    df["LIDER DIRETO"] = df["LIDER DIRETO"].apply(lambda x: _resolver_lider_inteligente(x, lista_nomes_completa))
-    return df
-
-df = carregar_dados()
-lista_nomes = sorted(df["NOME"].unique().tolist())
-lista_areas = sorted(df["ÁREA"].unique().tolist())
-nome_para_area = dict(zip(df["NOME"], df["ÁREA"]))
-
-# Sincroniza área se clicado
-if st.session_state.sel_nome != "Nenhum selecionado":
-    area_c = nome_para_area.get(st.session_state.sel_nome)
-    if area_c: st.session_state.sel_area = area_c
-
-# --- 6. INTERFACE ---
+# --- 6. INTERFACE SUPERIOR ---
 c1, c2, c3 = st.columns([2.5, 2.5, 0.6])
 with c1:
     area_sel = st.selectbox("🏢 Área de Visão:", ["Empresa inteira"] + lista_areas, 
-                            key="sb_area", index=(["Empresa inteira"] + lista_areas).index(st.session_state.sel_area))
+                            key="sb_area", 
+                            index=(["Empresa inteira"] + lista_areas).index(st.session_state.sel_area))
     st.session_state.sel_area = area_sel
 with c2:
+    # Se a área mudou manualmente, poderíamos resetar o nome, mas manter é melhor para navegação
     busca_nome = st.selectbox("🔍 Localizar Colaborador:", ["Nenhum selecionado"] + lista_nomes, 
-                              key="sb_nome", index=(["Nenhum selecionado"] + lista_nomes).index(st.session_state.sel_nome))
+                              key="sb_nome", 
+                              index=(["Nenhum selecionado"] + lista_nomes).index(st.session_state.sel_nome))
     st.session_state.sel_nome = busca_nome
 with c3:
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
@@ -123,20 +128,21 @@ with c3:
         st.query_params.clear()
         st.rerun()
 
-# --- 7. LAYOUT ---
+# --- 7. ORGANOGRAMA ---
 col_side, col_main = st.columns([0.8, 5])
 
 with col_side:
     palette = ["#FF00FF","#00FFFF","#FFFF00","#FF4500","#32CD32","#7B68EE","#FF1493","#A9A9A9","#ADFF2F","#FFD700"]
     area_color = {a: palette[i % len(palette)] for i, a in enumerate(lista_areas)}
     st.markdown('<div class="legend-sidebar"><div class="legend-title">Legenda</div>', unsafe_allow_html=True)
-    # LEGENDA CORRIGIDA: Azul para seleção
-    st.markdown('<div class="legend-item"><div class="legend-color" style="background:#2B7CE9; border:2px solid #000"></div>SELECIONADO</div>', unsafe_allow_html=True)
+    # Legenda corrigida: Azul para selecionado
+    st.markdown('<div class="legend-item"><div class="legend-color" style="background:#2B7CE9; border:1px solid #000"></div>SELECIONADO</div>', unsafe_allow_html=True)
     for area, color in area_color.items():
         st.markdown(f'<div class="legend-item"><div class="legend-color" style="background:{color}"></div>{area}</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
 with col_main:
+    # Filtragem de dados
     if area_sel == "Empresa inteira": df_view = df
     else:
         df_area = df[df["ÁREA"] == area_sel]
@@ -152,10 +158,7 @@ with col_main:
         
         cor_b = area_color.get(row["ÁREA"], "#7443F6")
         cor_f = "#000000"
-        
-        # Estilo de seleção combinando com a imagem (Azul)
-        if n == busca_nome: 
-            cor_b, cor_f = "#2B7CE9", "#FFFFFF"
+        if n == busca_nome: cor_b, cor_f = "#2B7CE9", "#FFFFFF"
 
         nodes.append({
             "id": n, "label": f"<b>{n}</b>\n{row['CARGO']}",
@@ -170,8 +173,8 @@ with col_main:
     html_vis = f"""
     <div id="loading-overlay">
         <div class="spinner"></div>
-        <div style="font-weight:700; color:#7443F6; font-family:sans-serif; font-size:1.2rem;">Montando o organograma...</div>
-        <div style="color:#999; margin-top:10px;">Ajustando posições de {len(nodes)} colaboradores</div>
+        <div style="font-weight:700; color:#7443F6; font-family:sans-serif;">Montando o organograma...</div>
+        <div style="color:#999; margin-top:10px; font-family:sans-serif; font-size:0.8rem;">Estabilizando posições</div>
     </div>
     <div id="mynetwork" style="height: 850px; background: #ffffff;"></div>
     <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
@@ -186,7 +189,7 @@ with col_main:
                 enabled: true,
                 solver: 'forceAtlas2Based',
                 forceAtlas2Based: {{ gravitationalConstant: -4500, centralGravity: 0.005, springLength: 650, avoidOverlap: 1 }},
-                stabilization: {{ iterations: 400 }}
+                stabilization: {{ iterations: 350 }}
             }},
             interaction: {{ dragNodes: true, zoomView: true, dragView: true }}
         }};
@@ -198,10 +201,10 @@ with col_main:
             setTimeout(() => {{ document.getElementById('loading-overlay').style.display = 'none'; }}, 800);
         }}
 
-        // TEMPO DE LOADING: 10 segundos para garantir estabilidade total
+        // Mantém o carregamento por 10 segundos
         setTimeout(hideLoading, 10000);
 
-        // CLIQUE NO CARD: Força atualização da página com o novo colaborador
+        // Clique para selecionar e filtrar automaticamente
         network.on("click", function (params) {{
             if (params.nodes.length > 0) {{
                 var nome = params.nodes[0];
