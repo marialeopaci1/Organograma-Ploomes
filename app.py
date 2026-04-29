@@ -32,12 +32,12 @@ header { visibility: hidden !important; }
     border-left: 6px solid #7443F6; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 10px;
 }
 .info-label { color: #7443F6; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; margin-bottom: 5px; }
-.info-text  { color: #444; font-size: 0.9rem; line-height: 1.4; }
+.info-text  { color: #444; font-size: 0.93rem; line-height: 1.4; }
 .legend-container {
     background: #fff; border-radius: 15px; padding: 16px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.08); border: 1px solid #eee;
 }
-.legend-item { display: flex; align-items: center; margin-bottom: 8px; font-size: 0.75rem; font-weight: 600; }
+.legend-item { display: flex; align-items: center; margin-bottom: 8px; font-size: 0.8rem; font-weight: 600; }
 .legend-color { width: 18px; height: 18px; border-radius: 5px; margin-right: 10px; flex-shrink: 0; border: 1px solid #ddd; }
 </style>
 """, unsafe_allow_html=True)
@@ -81,7 +81,7 @@ if "sel_area" not in st.session_state:
 if "sel_nome" not in st.session_state:
     st.session_state.sel_nome = "Nenhum selecionado"
 
-# --- CALLBACKS DE SINCRONIZAÇÃO ---
+# --- CALLBACKS ---
 def ao_mudar_area():
     st.session_state.sel_area = st.session_state.sb_area
     st.session_state.sel_nome = "Nenhum selecionado"
@@ -90,11 +90,11 @@ def ao_mudar_nome():
     nome = st.session_state.sb_nome
     st.session_state.sel_nome = nome
     if nome != "Nenhum selecionado":
-        area_do_colaborador = nome_para_area.get(nome)
-        if area_do_colaborador:
-            st.session_state.sel_area = area_do_colaborador
+        area_colab = nome_para_area.get(nome)
+        if area_colab:
+            st.session_state.sel_area = area_colab
 
-# --- INTERFACE SUPERIOR ---
+# --- INTERFACE ---
 c1, c2, c3 = st.columns([2.5, 2.5, 0.6])
 
 with c1:
@@ -115,24 +115,24 @@ with c3:
         st.session_state.logado = False
         st.rerun()
 
-# --- FILTRAGEM ---
+# --- LÓGICA DE FILTRAGEM ---
 area_sel = st.session_state.sel_area
 busca_nome = st.session_state.sel_nome
 
 if busca_nome != "Nenhum selecionado":
-    dados_colab = df[df["NOME"] == busca_nome].iloc[0]
+    row = df[df["NOME"] == busca_nome].iloc[0]
     i1, i2 = st.columns(2)
     with i1:
-        st.markdown(f'<div class="info-box"><div class="info-label">DESCRIÇÃO DA ÁREA: {dados_colab["ÁREA"]}</div><div class="info-text">{dados_colab["Descricao_Area"]}</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="info-box"><div class="info-label">DESCRIÇÃO DA ÁREA: {row["ÁREA"]}</div><div class="info-text">{row["Descricao_Area"]}</div></div>', unsafe_allow_html=True)
     with i2:
-        st.markdown(f'<div class="info-box"><div class="info-label">INFO DA POSIÇÃO: {dados_colab["CARGO"]}</div><div class="info-text">{dados_colab["Info_Posicao"]}</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="info-box"><div class="info-label">INFO DA POSIÇÃO: {row["CARGO"]}</div><div class="info-text">{row["Info_Posicao"]}</div></div>', unsafe_allow_html=True)
 
 if area_sel == "Empresa inteira":
     df_view = df
 else:
     df_area = df[df["ÁREA"] == area_sel]
-    lideres_necessarios = df_area["LIDER DIRETO"].unique()
-    df_lideres = df[df["NOME"].isin(lideres_necessarios)]
+    lideres = df_area["LIDER DIRETO"].unique()
+    df_lideres = df[df["NOME"].isin(lideres)]
     df_view = pd.concat([df_area, df_lideres]).drop_duplicates(subset=["NOME"])
 
 # --- CORES ---
@@ -153,20 +153,18 @@ for _, row in df_view.iterrows():
         "id": row["NOME"],
         "label": f"<b>{row['NOME']}</b>\n{row['CARGO']}",
         "color": {"background": cor_base, "border": cor_borda},
-        "font": {"multi": "html", "color": cor_fonte, "size": 20},
+        "font": {"multi": "html", "color": cor_fonte, "size": 18, "face": "Manrope"},
         "shape": "box",
         "margin": 10,
         "shadow": True
     })
 
-edges = []
-for _, row in df_view.iterrows():
-    if row["LIDER DIRETO"] and row["LIDER DIRETO"] in df_view["NOME"].values:
-        edges.append({"from": row["LIDER DIRETO"], "to": row["NOME"], "arrows": "to", "color": "#666666", "width": 2})
+edges = [{"from": r["LIDER DIRETO"], "to": r["NOME"], "arrows": "to", "color": "#888888"} 
+         for _, r in df_view.iterrows() if r["LIDER DIRETO"] in df_view["NOME"].values]
 
-# --- HTML/JS COM FÍSICA FLUTUANTE ---
+# --- HTML/JS (FÍSICA ORIGINAL MELHORADA) ---
 html_vis = f"""
-<div id="mynetwork" style="height: 750px; background: #ffffff;"></div>
+<div id="mynetwork" style="height: 800px; background: #ffffff;"></div>
 <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
 <script>
     var nodes = new vis.DataSet({json.dumps(nodes)});
@@ -175,37 +173,38 @@ html_vis = f"""
     var data = {{ nodes: nodes, edges: edges }};
     
     var options = {{
-        nodes: {{ 
-            shape: 'box', 
-            font: {{ face: 'Manrope', multi: 'html' }},
-            borderWidth: 2
-        }},
         physics: {{
             enabled: true,
-            forceAtlas2Based: {{
-                gravitationalConstant: -150,
-                centralGravity: 0.01,
-                springLength: 150,
-                springConstant: 0.08,
-                avoidOverlap: 1
-            }},
             solver: 'forceAtlas2Based',
-            stabilization: {{ iterations: 150 }}
+            forceAtlas2Based: {{
+                gravitationalConstant: -100, // Força de repulsão para não embolar
+                centralGravity: 0.005,       // Puxa levemente para o centro
+                springLength: 200,          // Tamanho das "molas" entre líder e liderado
+                springConstant: 0.08,
+                avoidOverlap: 1             // CRÍTICO: Impede um nó de ficar em cima do outro
+            }},
+            stabilization: {{
+                enabled: true,
+                iterations: 100,            // Pré-calcula a posição antes de mostrar
+                updateInterval: 25
+            }}
         }},
         interaction: {{ dragNodes: true, zoomView: true, dragView: true }}
     }};
     
     var network = new vis.Network(container, data, options);
-    
+
+    // Quando terminar de "flutuar" e parar, desligamos a física para economizar CPU
+    network.on("stabilizationIterationsDone", function () {{
+        network.setOptions({{ physics: false }});
+    }});
+
     var search = "{busca_nome}";
     if(search !== "Nenhum selecionado") {{
-        network.once('stabilized', function() {{
-            network.focus(search, {{ scale: 0.8, animation: true }});
-        }});
+        network.focus(search, {{ scale: 0.9, animation: true }});
+        network.selectNodes([search]);
     }} else {{
-        network.once('stabilized', function() {{
-            network.fit();
-        }});
+        network.fit();
     }}
 </script>
 """
@@ -221,4 +220,4 @@ with col_leg:
     st.markdown('</div>', unsafe_allow_html=True)
 
 with col_org:
-    components.html(html_vis, height=770)
+    components.html(html_vis, height=820)
