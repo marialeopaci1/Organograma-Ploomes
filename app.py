@@ -27,7 +27,11 @@ def carregar_dados():
     url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTLRqVZ9LWZMaPQ9MFGvOcQ8i-_ljOeKPO8w1jpwTscup0VM1ERFYgwitfmH0Zjfo-u9-fjfd60goF1/pub?output=csv"
     df = pd.read_csv(url).fillna("")
     df.columns = df.columns.str.strip()
-    df["ÁREA"] = df["ÁREA"].str.upper().str.strip()
+    # Garantir que as colunas de texto existam e sejam strings
+    for col in ["ÁREA", "NOME", "Descricao_Area", "Info_Posicao"]:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.strip()
+    df["ÁREA"] = df["ÁREA"].str.upper()
     return df
 
 df = carregar_dados()
@@ -55,13 +59,6 @@ def voltar_empresa_inteira():
     st.session_state.sel_area = "Empresa inteira"
     st.session_state.sel_nome = "Nenhum selecionado"
 
-def escurecer_cor(hex_color, fator=0.20):
-    hex_color = hex_color.lstrip('#')
-    rgb = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-    hls = colorsys.rgb_to_hls(rgb[0]/255.0, rgb[1]/255.0, rgb[2]/255.0)
-    new_rgb = colorsys.hls_to_rgb(hls[0], max(0, hls[1] - fator), min(1, hls[2] + 0.1))
-    return '#%02x%02x%02x' % (int(new_rgb[0]*255), int(new_rgb[1]*255), int(new_rgb[2]*255))
-
 # --- 4. INTERFACE SUPERIOR ---
 c1, c2, c3, c4 = st.columns([2, 2, 1, 0.6])
 with c1:
@@ -81,47 +78,44 @@ with c4:
         st.session_state.logado = False
         st.rerun()
 
-# --- 5. EXIBIÇÃO DE DESCRIÇÕES (RESTAURADO E CORRIGIDO) ---
-# Esta parte agora está fora de colunas complexas para garantir que apareça sempre
+# --- 5. EXIBIÇÃO DAS DESCRIÇÕES (LOGICA CORRIGIDA) ---
 if st.session_state.sel_area != "Empresa inteira" or st.session_state.sel_nome != "Nenhum selecionado":
-    st.write("") # Espaçador visual
+    st.markdown("---")
+    col_inf1, col_inf2 = st.columns(2)
     
-    # Busca dados da área
-    area_atual = st.session_state.sel_area
-    filtro_area = df[df["ÁREA"] == area_atual]
-    
-    # Se uma área específica estiver selecionada, mostra a descrição dela
-    if not filtro_area.empty and area_atual != "Empresa inteira":
-        descricao = filtro_area["Descricao_Area"].iloc[0]
-        if descricao and descricao != "":
-            st.info(f"**Sobre a área {area_atual}:** {descricao}")
+    with col_inf1:
+        # Pega a descrição da área selecionada (ou da área do colaborador localizado)
+        area_busca = st.session_state.sel_area
+        if area_busca != "Empresa inteira":
+            # Busca a primeira linha que contenha essa área para pegar a descrição
+            linha_area = df[df["ÁREA"] == area_busca].iloc[0]
+            texto_area = linha_area.get("Descricao_Area", "")
+            if texto_area and texto_area.lower() != "nan":
+                st.info(f"**Sobre a área {area_busca}:**\n\n{texto_area}")
 
-    # Se um colaborador estiver localizado, mostra a info da posição dele
-    if st.session_state.sel_nome != "Nenhum selecionado":
-        filtro_colab = df[df["NOME"] == st.session_state.sel_nome]
-        if not filtro_colab.empty:
-            info_pos = filtro_colab["Info_Posicao"].iloc[0]
-            if info_pos and info_pos != "":
-                st.success(f"**Informação da Posição ({st.session_state.sel_nome}):** {info_pos}")
+    with col_inf2:
+        # Pega a info da posição APENAS se um colaborador estiver selecionado
+        if st.session_state.sel_nome != "Nenhum selecionado":
+            linha_colab = df[df["NOME"] == st.session_state.sel_nome].iloc[0]
+            texto_pos = linha_colab.get("Info_Posicao", "")
+            if texto_pos and texto_pos.lower() != "nan":
+                st.success(f"**Posição de {st.session_state.sel_nome}:**\n\n{texto_pos}")
+    st.markdown("---")
 
 # --- 6. ORGANOGRAMA ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap');
 html, body, [class*="st-"] { font-family: 'Manrope', sans-serif; }
-.legend-sidebar { background: white; border-radius: 12px; padding: 15px; border: 1px solid #eee; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-.legend-item { display: flex; align-items: center; margin-bottom: 8px; font-size: 0.85rem; font-weight: 700; }
-.legend-color { width: 18px; height: 18px; border-radius: 4px; margin-right: 12px; }
-
 #loading-overlay {
     position: absolute; top:0; left:0; width:100%; height:100%;
     background: white; display:flex; flex-direction:column;
     align-items:center; justify-content:center; z-index:9999;
 }
 .spinner {
-    width: 60px; height: 60px; border: 6px solid #f3f3f3;
-    border-top: 6px solid #7443F6; border-radius: 50%;
-    animation: spin 1s linear infinite; margin-bottom: 20px;
+    width: 50px; height: 50px; border: 5px solid #f3f3f3;
+    border-top: 5px solid #7443F6; border-radius: 50%;
+    animation: spin 1s linear infinite;
 }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 </style>
@@ -130,25 +124,24 @@ html, body, [class*="st-"] { font-family: 'Manrope', sans-serif; }
 col_side, col_main = st.columns([0.8, 5])
 
 palette = ["#FF00FF","#00FFFF","#FFFF00","#FF4500","#32CD32","#7B68EE","#FF1493","#A9A9A9","#ADFF2F","#FFD700"]
-area_color = {a: palette[i % len(palette)] for i, a in enumerate(lista_areas)}
+areas_unicas = sorted(df["ÁREA"].unique().tolist())
+area_color = {a: palette[i % len(palette)] for i, a in enumerate(areas_unicas)}
 
 with col_side:
-    st.markdown('<div class="legend-sidebar"><b>LEGENDA</b><br><br>', unsafe_allow_html=True)
-    st.markdown('<div class="legend-item"><div class="legend-color" style="background:#2B7CE9"></div>SELECIONADO</div>', unsafe_allow_html=True)
+    st.markdown('<div style="background:white; padding:15px; border-radius:10px; border:1px solid #eee;"><b>LEGENDA</b><br><br>', unsafe_allow_html=True)
     for area, color in area_color.items():
-        st.markdown(f'<div class="legend-item"><div class="legend-color" style="background:{color}"></div>{area}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="display:flex; align-items:center; margin-bottom:5px;"><div style="width:15px; height:15px; background:{color}; margin-right:10px; border-radius:3px;"></div><span style="font-size:0.8rem; font-weight:700;">{area}</span></div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
 with col_main:
-    # Filtro de visualização
     if st.session_state.sel_area == "Empresa inteira":
         df_view = df
-        repulsao = -1000
+        repulsao = -1200
     else:
         df_view = df[df["ÁREA"] == st.session_state.sel_area]
         lideres = df_view["LIDER DIRETO"].unique()
         df_view = pd.concat([df_view, df[df["NOME"].isin(lideres)]]).drop_duplicates(subset=["NOME"])
-        repulsao = -600
+        repulsao = -700
 
     nodes = []
     for _, row in df_view.iterrows():
@@ -159,21 +152,18 @@ with col_main:
 
         nodes.append({
             "id": n, "label": f"<b>{n}</b>\n{row['CARGO']}",
-            "color": {"background": cor_b, "border": escurecer_cor(cor_b)},
-            "font": {"multi": "html", "color": cor_f, "face": "Manrope", "size": 28}, # Aumentado
+            "color": {"background": cor_b, "border": "#333333"},
+            "font": {"multi": "html", "color": cor_f, "size": 28},
             "shape": "box", "margin": 15
         })
 
-    # Setas pretas e grossas
+    # SETAS PRETAS E GROSSAS
     edges = [{"from": r["LIDER DIRETO"], "to": r["NOME"], "arrows": "to", "color": "#000000", "width": 3} 
              for _, r in df_view.iterrows() if r["LIDER DIRETO"] in df_view["NOME"].values]
 
     html_vis = f"""
-    <div id="loading-overlay">
-        <div class="spinner"></div>
-        <div style="font-weight:700; color:#7443F6; font-family:sans-serif; font-size:1.2rem;">Montando o organograma...</div>
-    </div>
-    <div id="mynetwork" style="height: 750px; background: white; border-radius:15px;"></div>
+    <div id="loading-overlay"><div class="spinner"></div><p style="margin-top:15px; font-weight:bold; color:#7443F6;">Montando o organograma...</p></div>
+    <div id="mynetwork" style="height: 750px; background: white; border-radius:15px; border: 1px solid #ddd;"></div>
     <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
     <script>
         var container = document.getElementById('mynetwork');
@@ -191,10 +181,8 @@ with col_main:
         
         function hideLoading() {{
             document.getElementById('loading-overlay').style.opacity = '0';
-            setTimeout(() => {{ document.getElementById('loading-overlay').style.display = 'none'; }}, 800);
+            setTimeout(() => {{ document.getElementById('loading-overlay').style.display = 'none'; }}, 500);
         }}
-
-        setTimeout(hideLoading, 10000); // 10 segundos de loading garantido
 
         network.once('stabilized', function() {{
             var search = "{st.session_state.sel_nome}";
@@ -203,6 +191,7 @@ with col_main:
             }}
             hideLoading();
         }});
+        setTimeout(hideLoading, 4000); // Segurança caso não estabilize rápido
     </script>
     """
     components.html(html_vis, height=770)
