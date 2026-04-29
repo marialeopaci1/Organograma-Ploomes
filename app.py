@@ -27,7 +27,6 @@ def carregar_dados():
     url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTLRqVZ9LWZMaPQ9MFGvOcQ8i-_ljOeKPO8w1jpwTscup0VM1ERFYgwitfmH0Zjfo-u9-fjfd60goF1/pub?output=csv"
     df = pd.read_csv(url).fillna("")
     df.columns = df.columns.str.strip()
-    # Garantir que as colunas de texto existam e sejam strings
     for col in ["ÁREA", "NOME", "Descricao_Area", "Info_Posicao"]:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip()
@@ -78,28 +77,34 @@ with c4:
         st.session_state.logado = False
         st.rerun()
 
-# --- 5. EXIBIÇÃO DAS DESCRIÇÕES (LOGICA CORRIGIDA) ---
+# --- 5. EXIBIÇÃO DAS DESCRIÇÕES (ROXO E CORRIGIDO) ---
+# CSS para deixar os quadros roxos (estilo Ploomes)
+st.markdown("""
+<style>
+    .stAlert { background-color: #f3f0ff; border-color: #7443F6; color: #2e1065; }
+    .stAlert svg { fill: #7443F6; }
+</style>
+""", unsafe_allow_html=True)
+
 if st.session_state.sel_area != "Empresa inteira" or st.session_state.sel_nome != "Nenhum selecionado":
     st.markdown("---")
     col_inf1, col_inf2 = st.columns(2)
     
     with col_inf1:
-        # Pega a descrição da área selecionada (ou da área do colaborador localizado)
-        area_busca = st.session_state.sel_area
-        if area_busca != "Empresa inteira":
-            # Busca a primeira linha que contenha essa área para pegar a descrição
-            linha_area = df[df["ÁREA"] == area_busca].iloc[0]
+        # Se localizou alguém, a área de referência é a desse colaborador
+        area_ref = st.session_state.sel_area
+        if area_ref != "Empresa inteira":
+            linha_area = df[df["ÁREA"] == area_ref].iloc[0]
             texto_area = linha_area.get("Descricao_Area", "")
             if texto_area and texto_area.lower() != "nan":
-                st.info(f"**Sobre a área {area_busca}:**\n\n{texto_area}")
+                st.info(f"**🏢 Sobre a área {area_ref}:**\n\n{texto_area}")
 
     with col_inf2:
-        # Pega a info da posição APENAS se um colaborador estiver selecionado
         if st.session_state.sel_nome != "Nenhum selecionado":
             linha_colab = df[df["NOME"] == st.session_state.sel_nome].iloc[0]
             texto_pos = linha_colab.get("Info_Posicao", "")
             if texto_pos and texto_pos.lower() != "nan":
-                st.success(f"**Posição de {st.session_state.sel_nome}:**\n\n{texto_pos}")
+                st.info(f"**👤 Posição de {st.session_state.sel_nome}:**\n\n{texto_pos}")
     st.markdown("---")
 
 # --- 6. ORGANOGRAMA ---
@@ -136,12 +141,12 @@ with col_side:
 with col_main:
     if st.session_state.sel_area == "Empresa inteira":
         df_view = df
-        repulsao = -1200
+        repulsao = -1300
     else:
         df_view = df[df["ÁREA"] == st.session_state.sel_area]
         lideres = df_view["LIDER DIRETO"].unique()
         df_view = pd.concat([df_view, df[df["NOME"].isin(lideres)]]).drop_duplicates(subset=["NOME"])
-        repulsao = -700
+        repulsao = -800
 
     nodes = []
     for _, row in df_view.iterrows():
@@ -157,7 +162,6 @@ with col_main:
             "shape": "box", "margin": 15
         })
 
-    # SETAS PRETAS E GROSSAS
     edges = [{"from": r["LIDER DIRETO"], "to": r["NOME"], "arrows": "to", "color": "#000000", "width": 3} 
              for _, r in df_view.iterrows() if r["LIDER DIRETO"] in df_view["NOME"].values]
 
@@ -191,7 +195,7 @@ with col_main:
             }}
             hideLoading();
         }});
-        setTimeout(hideLoading, 4000); // Segurança caso não estabilize rápido
+        setTimeout(hideLoading, 5000);
     </script>
     """
     components.html(html_vis, height=770)
