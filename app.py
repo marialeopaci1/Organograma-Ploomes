@@ -3,6 +3,7 @@ import pandas as pd
 import streamlit.components.v1 as components
 import json
 import colorsys
+import unicodedata
 
 # --- 1. CONFIGURAÇÃO E LOGIN ---
 st.set_page_config(page_title="Portal RH | Ploomes", layout="wide", initial_sidebar_state="collapsed")
@@ -21,16 +22,32 @@ if not st.session_state.logado:
                 st.rerun()
     st.stop()
 
+# --- FUNÇÃO DE NORMALIZAÇÃO (A MUDANÇA SOLICITADA) ---
+def normalizar_nome(nome):
+    if not nome: return ""
+    nome = str(nome).upper().strip()
+    # Caso específico do Barba
+    if "LUIZ FERNANDO BARBA" in nome:
+        return "LUIZ FERNANDO BARBA"
+    # Remove acentos
+    return "".join(c for c in unicodedata.normalize('NFD', nome) if unicodedata.category(c) != 'Mn')
+
 # --- 2. CARGA DE DADOS ---
 @st.cache_data(ttl=3600)
 def carregar_dados():
     url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTLRqVZ9LWZMaPQ9MFGvOcQ8i-_ljOeKPO8w1jpwTscup0VM1ERFYgwitfmH0Zjfo-u9-fjfd60goF1/pub?output=csv"
     df = pd.read_csv(url).fillna("")
     df.columns = df.columns.str.strip()
-    for col in ["ÁREA", "NOME", "Descricao_Area", "Info_Posicao"]:
+    
+    for col in ["ÁREA", "NOME", "LIDER DIRETO", "Descricao_Area", "Info_Posicao"]:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip()
+            
     df["ÁREA_BUSCA"] = df["ÁREA"].str.upper()
+    # Criamos colunas normalizadas para fazer o "Match" da hierarquia sem erro de acento ou nome curto
+    df["NOME_NORM"] = df["NOME"].apply(normalizar_nome)
+    df["LIDER_NORM"] = df["LIDER DIRETO"].apply(normalizar_nome)
+    
     return df
 
 df = carregar_dados()
@@ -77,34 +94,26 @@ with c4:
         st.session_state.logado = False
         st.rerun()
 
-# --- 5. QUADROS ROXOS (LOGICA DE BUSCA MELHORADA) ---
-st.markdown("""
-<style>
-    .stAlert { background-color: #f3f0ff !important; border: 1px solid #7443F6 !important; color: #2e1065 !important; border-radius: 10px !important; }
-</style>
-""", unsafe_allow_html=True)
+# --- 5. QUADROS ROXOS ---
+st.markdown("<style>.stAlert { background-color: #f3f0ff !important; border: 1px solid #7443F6 !important; color: #2e1065 !important; border-radius: 10px !important; }</style>", unsafe_allow_html=True)
 
 if st.session_state.sel_area != "Empresa inteira" or st.session_state.sel_nome != "Nenhum selecionado":
     st.markdown("<br>", unsafe_allow_html=True)
     inf1, inf2 = st.columns(2)
-    
-    # Define qual área pesquisar: Se localizou alguém, usa a área desse alguém. Se não, usa o filtro de área.
     area_para_pesquisa = st.session_state.sel_area
     if st.session_state.sel_nome != "Nenhum selecionado":
         area_para_pesquisa = nome_para_area.get(st.session_state.sel_nome, st.session_state.sel_area)
 
     with inf1:
         if area_para_pesquisa != "Empresa inteira":
-            # Busca a descrição em qualquer linha que pertença a essa área e tenha texto
-            busca_desc = df[(df["ÁREA"] == area_para_pesquisa) & (df["Descricao_Area"] != "") & (df["Descricao_Area"] != "nan")]
-            if not busca_desc.empty:
-                st.info(f"**🏢 Sobre a área {area_para_pesquisa}:**\n\n{busca_desc['Descricao_Area'].iloc[0]}")
-
+            dados_area = df[(df["ÁREA"] == area_para_pesquisa) & (df["Descricao_Area"] != "") & (df["Descricao_Area"] != "nan")]
+            if not dados_area.empty:
+                st.info(f"**🏢 Sobre a área {area_para_pesquisa}:**\n\n{dados_area['Descricao_Area'].iloc[0]}")
     with inf2:
         if st.session_state.sel_nome != "Nenhum selecionado":
-            busca_pos = df[df["NOME"] == st.session_state.sel_nome]
-            if not busca_pos.empty:
-                texto_pos = busca_pos["Info_Posicao"].iloc[0]
+            dados_colab = df[df["NOME"] == st.session_state.sel_nome]
+            if not dados_colab.empty:
+                texto_pos = dados_colab["Info_Posicao"].iloc[0]
                 if texto_pos and texto_pos.lower() != "nan" and texto_pos != "":
                     st.info(f"**👤 Posição de {st.session_state.sel_nome}:**\n\n{texto_pos}")
     st.markdown("---")
@@ -126,8 +135,8 @@ with col_main:
         repulsao = -1300
     else:
         df_view = df[df["ÁREA"] == st.session_state.sel_area].copy()
-        lideres = df_view["LIDER DIRETO"].unique()
-        df_view = pd.concat([df_view, df[df["NOME"].isin(lideres)]]).drop_duplicates(subset=["NOME"])
+        lideres_norm = df_view["LIDER_NORM"].unique()
+        df_view = pd.concat([df_view, df[df["NOME_NORM"].isin(lideres_norm)]]).drop_duplicates(subset=["NOME"])
         repulsao = -850
 
     nodes = []
@@ -136,9 +145,11 @@ with col_main:
         cor_b = area_color.get(row["ÁREA"], "#7443F6")
         cor_f = "#000000"
         if n == st.session_state.sel_nome: cor_b, cor_f = "#2B7CE9", "#FFFFFF"
-        nodes.append({"id": n, "label": f"<b>{n}</b>\n{row['CARGO']}", "color": {"background": cor_b, "border": "#333333"}, "font": {"multi": "html", "color": cor_f, "size": 28}, "shape": "box", "margin": 15})
+        nodes.append({"id": row["NOME_NORM"], "label": f"<b>{n}</b>\n{row['CARGO']}", "color": {"background": cor_b, "border": "#333333"}, "font": {"multi": "html", "color": cor_f, "size": 28}, "shape": "box", "margin": 15})
 
-    edges = [{"from": r["LIDER DIRETO"], "to": r["NOME"], "arrows": "to", "color": "#000000", "width": 3} for _, r in df_view.iterrows() if r["LIDER DIRETO"] in df_view["NOME"].values]
+    # Hierarquia baseada nas colunas NORMALIZADAS
+    edges = [{"from": r["LIDER_NORM"], "to": r["NOME_NORM"], "arrows": "to", "color": "#000000", "width": 3} 
+             for _, r in df_view.iterrows() if r["LIDER_NORM"] in df_view["NOME_NORM"].values]
 
     html_vis = f"""
     <div id="loading" style="position:absolute; width:100%; height:100%; background:white; display:flex; align-items:center; justify-content:center; z-index:999; font-family:sans-serif;">
@@ -152,8 +163,8 @@ with col_main:
         var options = {{ physics: {{ enabled: true, solver: 'forceAtlas2Based', forceAtlas2Based: {{ gravitationalConstant: {repulsao}, springLength: 180, avoidOverlap: 1 }}, stabilization: {{ iterations: 200 }} }}, interaction: {{ dragNodes: true, zoomView: true, dragView: true }} }};
         var network = new vis.Network(container, data, options);
         network.once('stabilized', function() {{ 
-            var search = "{st.session_state.sel_nome}";
-            if(search !== "Nenhum selecionado") network.focus(search, {{ scale: 0.7, animation: true }});
+            var searchNorm = "{normalizar_nome(st.session_state.sel_nome)}";
+            if(searchNorm !== "{normalizar_nome('Nenhum selecionado')}") network.focus(searchNorm, {{ scale: 0.7, animation: true }});
             document.getElementById('loading').style.display = 'none'; 
         }});
         setTimeout(() => {{ document.getElementById('loading').style.display = 'none'; }}, 5000);
