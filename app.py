@@ -5,22 +5,17 @@ import json
 import colorsys
 import unicodedata
 
-# --- 1. CONFIGURAÇÃO INICIAL (PRIMEIRA COISA DO SCRIPT) ---
+# --- 1. CONFIGURAÇÃO E CAPTURA DE CLIQUE ---
 st.set_page_config(page_title="Portal RH | Ploomes", layout="wide", initial_sidebar_state="collapsed")
 
-# Inicializa as variáveis no session_state para evitar o AttributeError
-if "sel_area" not in st.session_state: 
-    st.session_state.sel_area = "Empresa inteira"
-if "sel_nome" not in st.session_state: 
-    st.session_state.sel_nome = "Nenhum selecionado"
-if "logado" not in st.session_state: 
-    st.session_state.logado = False
+# Inicialização de segurança
+if "sel_area" not in st.session_state: st.session_state.sel_area = "Empresa inteira"
+if "sel_nome" not in st.session_state: st.session_state.sel_nome = "Nenhum selecionado"
+if "logado" not in st.session_state: st.session_state.logado = False
 
-# Captura o clique vindo da URL (Query Params)
-query_params = st.query_params
-if "colab" in query_params:
-    nome_clicado = query_params["colab"]
-    st.session_state.sel_nome = nome_clicado
+# Captura clique via URL
+if "colab" in st.query_params:
+    st.session_state.sel_nome = st.query_params["colab"]
 
 # --- 2. FUNÇÕES DE SUPORTE ---
 def _normalizar(texto):
@@ -62,18 +57,11 @@ header { visibility: hidden !important; }
 .legend-item { display: flex; align-items: center; margin-bottom: 8px; font-size: 0.8rem; font-weight: 600; }
 .legend-color { width: 16px; height: 16px; border-radius: 4px; margin-right: 10px; flex-shrink: 0; }
 
-.info-box {
-    background: #fcfcfc; border-radius: 12px; padding: 12px;
-    border-left: 5px solid #7443F6; box-shadow: 0 2px 6px rgba(0,0,0,0.04); margin-bottom: 8px;
-}
-.info-label { color: #7443F6; font-size: 0.7rem; font-weight: 800; }
-.info-text { font-size: 0.85rem; color: #333; line-height: 1.3; }
-
 #loading-overlay {
     position: absolute; top:0; left:0; width:100%; height:100%;
     background: white; display:flex; flex-direction:column;
     align-items:center; justify-content:center; z-index:9999;
-    transition: opacity 0.5s ease;
+    transition: opacity 0.8s ease;
 }
 .spinner {
     width: 60px; height: 60px; border: 6px solid #f3f3f3;
@@ -113,23 +101,20 @@ lista_nomes = sorted(df["NOME"].unique().tolist())
 lista_areas = sorted(df["ÁREA"].unique().tolist())
 nome_para_area = dict(zip(df["NOME"], df["ÁREA"]))
 
-# Sincroniza área se o nome mudou pelo clique
+# Sincroniza área se clicado
 if st.session_state.sel_nome != "Nenhum selecionado":
-    area_clicada = nome_para_area.get(st.session_state.sel_nome)
-    if area_clicada:
-        st.session_state.sel_area = area_clicada
+    area_c = nome_para_area.get(st.session_state.sel_nome)
+    if area_c: st.session_state.sel_area = area_c
 
 # --- 6. INTERFACE ---
 c1, c2, c3 = st.columns([2.5, 2.5, 0.6])
 with c1:
     area_sel = st.selectbox("🏢 Área de Visão:", ["Empresa inteira"] + lista_areas, 
-                            key="sb_area", 
-                            index=(["Empresa inteira"] + lista_areas).index(st.session_state.sel_area))
+                            key="sb_area", index=(["Empresa inteira"] + lista_areas).index(st.session_state.sel_area))
     st.session_state.sel_area = area_sel
 with c2:
     busca_nome = st.selectbox("🔍 Localizar Colaborador:", ["Nenhum selecionado"] + lista_nomes, 
-                              key="sb_nome", 
-                              index=(["Nenhum selecionado"] + lista_nomes).index(st.session_state.sel_nome))
+                              key="sb_nome", index=(["Nenhum selecionado"] + lista_nomes).index(st.session_state.sel_nome))
     st.session_state.sel_nome = busca_nome
 with c3:
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
@@ -138,19 +123,15 @@ with c3:
         st.query_params.clear()
         st.rerun()
 
-# --- 7. ORGANOGRAMA ---
+# --- 7. LAYOUT ---
 col_side, col_main = st.columns([0.8, 5])
 
 with col_side:
-    if busca_nome != "Nenhum selecionado":
-        row = df[df["NOME"] == busca_nome].iloc[0]
-        st.markdown(f'<div class="info-box"><div class="info-label">DESCRIÇÃO DA ÁREA</div><div class="info-text">{row["Descricao_Area"][:100]}...</div></div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="info-box"><div class="info-label">POSIÇÃO</div><div class="info-text">{row["Info_Posicao"][:100]}...</div></div>', unsafe_allow_html=True)
-    
     palette = ["#FF00FF","#00FFFF","#FFFF00","#FF4500","#32CD32","#7B68EE","#FF1493","#A9A9A9","#ADFF2F","#FFD700"]
     area_color = {a: palette[i % len(palette)] for i, a in enumerate(lista_areas)}
     st.markdown('<div class="legend-sidebar"><div class="legend-title">Legenda</div>', unsafe_allow_html=True)
-    st.markdown('<div class="legend-item"><div class="legend-color" style="background:#000000"></div>SELECIONADO</div>', unsafe_allow_html=True)
+    # LEGENDA CORRIGIDA: Azul para seleção
+    st.markdown('<div class="legend-item"><div class="legend-color" style="background:#2B7CE9; border:2px solid #000"></div>SELECIONADO</div>', unsafe_allow_html=True)
     for area, color in area_color.items():
         st.markdown(f'<div class="legend-item"><div class="legend-color" style="background:{color}"></div>{area}</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
@@ -159,9 +140,8 @@ with col_main:
     if area_sel == "Empresa inteira": df_view = df
     else:
         df_area = df[df["ÁREA"] == area_sel]
-        lideres_necessarios = df_area["LIDER DIRETO"].unique()
-        df_lideres = df[df["NOME"].isin(lideres_necessarios)]
-        df_view = pd.concat([df_area, df_lideres]).drop_duplicates(subset=["NOME"])
+        lideres = df_area["LIDER DIRETO"].unique()
+        df_view = pd.concat([df_area, df[df["NOME"].isin(lideres)]]).drop_duplicates(subset=["NOME"])
 
     nodes = []
     for _, row in df_view.iterrows():
@@ -169,9 +149,13 @@ with col_main:
         if "CEO" in c or "FOUNDER" in c: fs, mg, bw = 65, 50, 9
         elif any(x in c for x in ["DIRETOR", "GERENTE", "HEAD", "COORDENADOR", "LEAD"]): fs, mg, bw = 48, 38, 7
         else: fs, mg, bw = 38, 28, 5
+        
         cor_b = area_color.get(row["ÁREA"], "#7443F6")
         cor_f = "#000000"
-        if n == busca_nome: cor_b, cor_f = "#000000", "#FFFFFF"
+        
+        # Estilo de seleção combinando com a imagem (Azul)
+        if n == busca_nome: 
+            cor_b, cor_f = "#2B7CE9", "#FFFFFF"
 
         nodes.append({
             "id": n, "label": f"<b>{n}</b>\n{row['CARGO']}",
@@ -186,7 +170,8 @@ with col_main:
     html_vis = f"""
     <div id="loading-overlay">
         <div class="spinner"></div>
-        <div style="font-weight:700; color:#7443F6; font-family:sans-serif;">Montando o organograma...</div>
+        <div style="font-weight:700; color:#7443F6; font-family:sans-serif; font-size:1.2rem;">Montando o organograma...</div>
+        <div style="color:#999; margin-top:10px;">Ajustando posições de {len(nodes)} colaboradores</div>
     </div>
     <div id="mynetwork" style="height: 850px; background: #ffffff;"></div>
     <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
@@ -200,8 +185,8 @@ with col_main:
             physics: {{
                 enabled: true,
                 solver: 'forceAtlas2Based',
-                forceAtlas2Based: {{ gravitationalConstant: -4000, centralGravity: 0.005, springLength: 600, avoidOverlap: 1 }},
-                stabilization: {{ iterations: 300 }}
+                forceAtlas2Based: {{ gravitationalConstant: -4500, centralGravity: 0.005, springLength: 650, avoidOverlap: 1 }},
+                stabilization: {{ iterations: 400 }}
             }},
             interaction: {{ dragNodes: true, zoomView: true, dragView: true }}
         }};
@@ -210,18 +195,18 @@ with col_main:
 
         function hideLoading() {{
             document.getElementById('loading-overlay').style.opacity = '0';
-            setTimeout(() => {{ document.getElementById('loading-overlay').style.display = 'none'; }}, 500);
+            setTimeout(() => {{ document.getElementById('loading-overlay').style.display = 'none'; }}, 800);
         }}
 
-        // MÍNIMO 7 SEGUNDOS DE LOADING
-        setTimeout(hideLoading, 7000);
-        network.on("stabilizationIterationsDone", hideLoading);
+        // TEMPO DE LOADING: 10 segundos para garantir estabilidade total
+        setTimeout(hideLoading, 10000);
 
+        // CLIQUE NO CARD: Força atualização da página com o novo colaborador
         network.on("click", function (params) {{
             if (params.nodes.length > 0) {{
-                var nomeClicado = params.nodes[0];
+                var nome = params.nodes[0];
                 var url = new URL(window.parent.location.href);
-                url.searchParams.set("colab", nomeClicado);
+                url.searchParams.set("colab", nome);
                 window.parent.location.href = url.href;
             }}
         }});
