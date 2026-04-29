@@ -17,30 +17,27 @@ def _normalizar(texto):
     return ''.join(c for c in nfkd if not unicodedata.combining(c)).upper().strip()
 
 def _resolver_lider_inteligente(lider_raw, lista_nomes):
-    """Tenta encontrar o líder mesmo com nomes parciais ou sem acento."""
+    """
+    Dedução avançada: Verifica se o nome do líder é um subconjunto 
+    do nome completo do colaborador.
+    """
     lider_norm = _normalizar(lider_raw)
     if not lider_norm: return ""
     
-    # 1. Tentativa exata (normalizada)
+    palavras_lider = set(lider_norm.split())
+    
+    # 1. Busca por contenção de palavras (Ex: Luiz Fernando Barba em Luiz Fernando Barba Alvarenga)
     for nome in lista_nomes:
-        if _normalizar(nome) == lider_norm:
+        nome_norm = _normalizar(nome)
+        palavras_nome = set(nome_norm.split())
+        
+        # Se todas as palavras que você escreveu no líder existirem no nome completo do colaborador
+        if palavras_lider.issubset(palavras_nome):
             return nome
             
-    # 2. Tentativa por "contém" (ex: Paulo Souza em Paulo Silva Souza)
-    # Ou se o primeiro e último nome coincidirem
-    partes_lider = lider_norm.split()
-    if len(partes_lider) >= 2:
-        primeiro = partes_lider[0]
-        ultimo = partes_lider[-1]
-        for nome in lista_nomes:
-            n_norm = _normalizar(nome)
-            n_partes = n_norm.split()
-            if primeiro == n_partes[0] and ultimo == n_partes[-1]:
-                return nome
-    
     return lider_raw
 
-def escurecer_cor(hex_color, fator=0.15):
+def escurecer_cor(hex_color, fator=0.20):
     hex_color = hex_color.lstrip('#')
     rgb = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
     hls = colorsys.rgb_to_hls(rgb[0]/255.0, rgb[1]/255.0, rgb[2]/255.0)
@@ -58,7 +55,7 @@ header { visibility: hidden !important; }
     background: #fcfcfc; border-radius: 15px; padding: 15px;
     border-left: 6px solid #7443F6; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 10px;
 }
-.info-label { color: #7443F6; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; }
+.info-label { color: #7443F6; font-size: 0.8rem; font-weight: 800; text-transform: uppercase; }
 .legend-container {
     background: #fff; border-radius: 15px; padding: 16px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.08); border: 1px solid #eee;
@@ -91,7 +88,7 @@ def carregar_dados():
     df["ÁREA"] = df["ÁREA"].str.upper().str.strip()
     
     lista_nomes_completa = df["NOME"].unique().tolist()
-    # Resolve os líderes usando a lógica inteligente (sem acento / nome parcial)
+    # Resolve os líderes usando a lógica inteligente aprimorada
     df["LIDER DIRETO"] = df["LIDER DIRETO"].apply(lambda x: _resolver_lider_inteligente(x, lista_nomes_completa))
     
     return df
@@ -166,25 +163,25 @@ else:
 palette = ["#FF00FF","#00FFFF","#FFFF00","#FF4500","#32CD32","#7B68EE","#FF1493","#A9A9A9","#ADFF2F","#FFD700"]
 area_color = {a: palette[i % len(palette)] for i, a in enumerate(lista_areas)}
 
-# --- NÓS E ARESTAS COM TAMANHO DINÂMICO ---
+# --- NÓS E ARESTAS COM CARDS AINDA MAIORES ---
 nodes = []
 for _, row in df_view.iterrows():
     nome = row["NOME"]
     cargo = row["CARGO"].upper()
     
-    # Lógica de Tamanho: CEO > LIDER > COLABORADOR
+    # Aumentei os tamanhos significativamente
     if "CEO" in cargo or "FOUNDER" in cargo:
-        tamanho_fonte = 45
-        padding = 30
-        border_w = 6
+        tamanho_fonte = 60
+        margin = 45
+        border_w = 8
     elif any(x in cargo for x in ["DIRETOR", "GERENTE", "HEAD", "COORDENADOR", "LEAD"]):
-        tamanho_fonte = 32
-        padding = 20
-        border_w = 4
+        tamanho_fonte = 45
+        margin = 35
+        border_w = 6
     else:
-        tamanho_fonte = 24
-        padding = 12
-        border_w = 2
+        tamanho_fonte = 36
+        margin = 25
+        border_w = 4
 
     cor_base = area_color.get(row["ÁREA"], "#7443F6")
     cor_borda = escurecer_cor(cor_base)
@@ -199,15 +196,15 @@ for _, row in df_view.iterrows():
         "color": {"background": cor_base, "border": cor_borda},
         "font": {"multi": "html", "color": cor_fonte, "size": tamanho_fonte, "face": "Manrope"},
         "shape": "box",
-        "margin": padding,
+        "margin": margin,
         "borderWidth": border_w,
-        "shadow": True
+        "shadow": {"enabled": True, "size": 10, "x": 5, "y": 5}
     })
 
-edges = [{"from": r["LIDER DIRETO"], "to": r["NOME"], "arrows": "to", "color": "#888888", "width": 3} 
+edges = [{"from": r["LIDER DIRETO"], "to": r["NOME"], "arrows": "to", "color": "#888888", "width": 5} 
          for _, r in df_view.iterrows() if r["LIDER DIRETO"] in df_view["NOME"].values]
 
-# --- HTML/JS (FÍSICA ESPALHADA) ---
+# --- HTML/JS (FÍSICA COM MAIS RESPIRO) ---
 html_vis = f"""
 <div id="mynetwork" style="height: 850px; background: #ffffff;"></div>
 <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
@@ -222,13 +219,13 @@ html_vis = f"""
             enabled: true,
             solver: 'forceAtlas2Based',
             forceAtlas2Based: {{
-                gravitationalConstant: -2000, 
-                centralGravity: 0.003,
-                springLength: 400, 
+                gravitationalConstant: -3500, // Força de repulsão maior para cards maiores
+                centralGravity: 0.005,
+                springLength: 550,           // Mais distância entre os cards
                 springConstant: 0.04,
                 avoidOverlap: 1
             }},
-            stabilization: {{ iterations: 200 }}
+            stabilization: {{ iterations: 250 }}
         }},
         interaction: {{ dragNodes: true, zoomView: true, dragView: true }}
     }};
@@ -238,7 +235,7 @@ html_vis = f"""
     network.on("stabilizationIterationsDone", function () {{
         var search = "{busca_nome}";
         if(search !== "Nenhum selecionado") {{
-            network.focus(search, {{ scale: 0.5, animation: true }});
+            network.focus(search, {{ scale: 0.4, animation: true }});
             network.selectNodes([search]);
         }} else {{
             network.fit();
@@ -250,11 +247,11 @@ html_vis = f"""
 col_leg, col_org = st.columns([1, 4.5])
 with col_leg:
     st.markdown('<div class="legend-container">', unsafe_allow_html=True)
-    st.markdown('<div style="font-weight:900; margin-bottom:15px;">LEGENDA</div>', unsafe_allow_html=True)
-    st.markdown('<div style="display:flex; align-items:center; margin-bottom:8px;"><div style="width:18px; height:18px; background:#000000; border-radius:5px; margin-right:10px;"></div>SELECIONADO</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-weight:900; margin-bottom:15px; font-size:1rem;">LEGENDA</div>', unsafe_allow_html=True)
+    st.markdown('<div style="display:flex; align-items:center; margin-bottom:12px; font-size:0.9rem;"><div style="width:22px; height:22px; background:#000000; border-radius:6px; margin-right:12px;"></div>SELECIONADO</div>', unsafe_allow_html=True)
     for area, color in area_color.items():
-        st.markdown(f'<div style="display:flex; align-items:center; margin-bottom:8px;"><div style="width:18px; height:18px; background:{color}; border-radius:5px; margin-right:10px;"></div>{area}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="display:flex; align-items:center; margin-bottom:12px; font-size:0.9rem;"><div style="width:22px; height:22px; background:{color}; border-radius:6px; margin-right:12px;"></div>{area}</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
 with col_org:
-    components.html(html_vis, height=870)
+    components.html(html_vis, height=880)
