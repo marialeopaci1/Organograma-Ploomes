@@ -5,7 +5,7 @@ import json
 import colorsys
 import unicodedata
 
-# A configuração de página deve ser sempre o primeiro comando Streamlit
+# Configuração de página
 st.set_page_config(page_title="Portal RH | Ploomes", layout="wide", initial_sidebar_state="collapsed")
 
 # --- FUNÇÕES DE SUPORTE ---
@@ -57,7 +57,6 @@ if not st.session_state.logado:
             if u == "RHPloomes" and s == "RHPloomes":
                 st.session_state.logado = True
                 st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
 # --- CARREGAMENTO DE DADOS ---
@@ -71,12 +70,12 @@ def carregar_dados():
 
 df = carregar_dados()
 
-# Mapeamentos rápidos para performance dos menus
+# Mapeamentos para performance
 lista_nomes = sorted(df["NOME"].unique().tolist())
 lista_areas = sorted(df["ÁREA"].unique().tolist())
 nome_para_area = dict(zip(df["NOME"], df["ÁREA"]))
 
-# --- CONTROLE DE ESTADO (SESSION STATE) ---
+# --- ESTADO DOS FILTROS ---
 if "sel_area" not in st.session_state:
     st.session_state.sel_area = "Empresa inteira"
 if "sel_nome" not in st.session_state:
@@ -116,7 +115,7 @@ with c3:
         st.session_state.logado = False
         st.rerun()
 
-# --- INFO BOXES ---
+# --- FILTRAGEM ---
 area_sel = st.session_state.sel_area
 busca_nome = st.session_state.sel_nome
 
@@ -128,28 +127,25 @@ if busca_nome != "Nenhum selecionado":
     with i2:
         st.markdown(f'<div class="info-box"><div class="info-label">INFO DA POSIÇÃO: {dados_colab["CARGO"]}</div><div class="info-text">{dados_colab["Info_Posicao"]}</div></div>', unsafe_allow_html=True)
 
-# --- FILTRAGEM DO ORGANOGRAMA ---
 if area_sel == "Empresa inteira":
     df_view = df
 else:
-    # Filtra a área + os líderes diretos para não quebrar os caminhos da árvore
     df_area = df[df["ÁREA"] == area_sel]
     lideres_necessarios = df_area["LIDER DIRETO"].unique()
     df_lideres = df[df["NOME"].isin(lideres_necessarios)]
     df_view = pd.concat([df_area, df_lideres]).drop_duplicates(subset=["NOME"])
 
-# --- CORES E LEGENDA ---
+# --- CORES ---
 palette = ["#FF00FF","#00FFFF","#FFFF00","#FF4500","#32CD32","#7B68EE","#FF1493","#A9A9A9","#ADFF2F","#FFD700"]
 area_color = {a: palette[i % len(palette)] for i, a in enumerate(lista_areas)}
 
-# --- PREPARAÇÃO DOS NÓS E ARESTAS (JSON) ---
+# --- NÓS E ARESTAS ---
 nodes = []
 for _, row in df_view.iterrows():
     cor_base = area_color.get(row["ÁREA"], "#7443F6")
     cor_borda = escurecer_cor(cor_base)
     cor_fonte = "#000000"
     
-    # Destaque para o selecionado
     if row["NOME"] == busca_nome:
         cor_base, cor_fonte, cor_borda = "#000000", "#FFFFFF", "#000000"
 
@@ -157,20 +153,20 @@ for _, row in df_view.iterrows():
         "id": row["NOME"],
         "label": f"<b>{row['NOME']}</b>\n{row['CARGO']}",
         "color": {"background": cor_base, "border": cor_borda},
-        "font": {"multi": "html", "color": cor_fonte, "size": 22, "face": "Manrope"},
+        "font": {"multi": "html", "color": cor_fonte, "size": 20},
         "shape": "box",
-        "margin": 12,
+        "margin": 10,
         "shadow": True
     })
 
 edges = []
 for _, row in df_view.iterrows():
     if row["LIDER DIRETO"] and row["LIDER DIRETO"] in df_view["NOME"].values:
-        edges.append({"from": row["LIDER DIRETO"], "to": row["NOME"], "arrows": "to", "color": "#999999"})
+        edges.append({"from": row["LIDER DIRETO"], "to": row["NOME"], "arrows": "to", "color": "#666666", "width": 2})
 
-# --- HTML/JAVASCRIPT COM VIS.JS (MODO ÁRVORE VERTICAL) ---
+# --- HTML/JS COM FÍSICA FLUTUANTE ---
 html_vis = f"""
-<div id="mynetwork" style="height: 800px; background: #ffffff;"></div>
+<div id="mynetwork" style="height: 750px; background: #ffffff;"></div>
 <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
 <script>
     var nodes = new vis.DataSet({json.dumps(nodes)});
@@ -179,33 +175,32 @@ html_vis = f"""
     var data = {{ nodes: nodes, edges: edges }};
     
     var options = {{
-        layout: {{
-            hierarchical: {{
-                enabled: true,
-                direction: 'UD',          // Up-Down (Vertical)
-                sortMethod: 'directed',   // Mantém a hierarquia baseada nas setas
-                nodeSpacing: 350,         // Espaçamento entre colunas
-                levelSpacing: 300,        // Espaçamento entre linhas (níveis)
-                parentCentralization: true
-            }}
+        nodes: {{ 
+            shape: 'box', 
+            font: {{ face: 'Manrope', multi: 'html' }},
+            borderWidth: 2
         }},
         physics: {{
-            enabled: false // Desativado para manter o layout estritamente hierárquico
+            enabled: true,
+            forceAtlas2Based: {{
+                gravitationalConstant: -150,
+                centralGravity: 0.01,
+                springLength: 150,
+                springConstant: 0.08,
+                avoidOverlap: 1
+            }},
+            solver: 'forceAtlas2Based',
+            stabilization: {{ iterations: 150 }}
         }},
-        interaction: {{
-            dragNodes: true,
-            hover: true,
-            zoomView: true
-        }}
+        interaction: {{ dragNodes: true, zoomView: true, dragView: true }}
     }};
     
     var network = new vis.Network(container, data, options);
     
-    // Centralização e Zoom
     var search = "{busca_nome}";
     if(search !== "Nenhum selecionado") {{
         network.once('stabilized', function() {{
-            network.focus(search, {{ scale: 0.7, animation: true }});
+            network.focus(search, {{ scale: 0.8, animation: true }});
         }});
     }} else {{
         network.once('stabilized', function() {{
@@ -216,7 +211,6 @@ html_vis = f"""
 """
 
 col_leg, col_org = st.columns([1, 4.5])
-
 with col_leg:
     st.markdown('<div class="legend-container">', unsafe_allow_html=True)
     st.markdown('<div style="font-weight:900; margin-bottom:15px; font-size:0.85rem;">LEGENDA</div>', unsafe_allow_html=True)
@@ -227,4 +221,4 @@ with col_leg:
     st.markdown('</div>', unsafe_allow_html=True)
 
 with col_org:
-    components.html(html_vis, height=820)
+    components.html(html_vis, height=770)
