@@ -5,18 +5,22 @@ import json
 import colorsys
 import unicodedata
 
-# --- 1. CONFIGURAÇÃO E LÓGICA DE CAPTURA DE CLIQUE ---
+# --- 1. CONFIGURAÇÃO INICIAL (PRIMEIRA COISA DO SCRIPT) ---
 st.set_page_config(page_title="Portal RH | Ploomes", layout="wide", initial_sidebar_state="collapsed")
 
-# Lógica para ler o clique vindo da URL (Query Params)
-# Isso faz com que, quando o JS mudar a URL, o Streamlit capture o nome
+# Inicializa as variáveis no session_state para evitar o AttributeError
+if "sel_area" not in st.session_state: 
+    st.session_state.sel_area = "Empresa inteira"
+if "sel_nome" not in st.session_state: 
+    st.session_state.sel_nome = "Nenhum selecionado"
+if "logado" not in st.session_state: 
+    st.session_state.logado = False
+
+# Captura o clique vindo da URL (Query Params)
 query_params = st.query_params
 if "colab" in query_params:
     nome_clicado = query_params["colab"]
-    if "sel_nome" not in st.session_state or st.session_state.sel_nome != nome_clicado:
-        st.session_state.sel_nome = nome_clicado
-        # Ao mudar o nome, precisamos deduzir a área para atualizar o outro filtro
-        # (A dedução de área será feita logo após o carregamento do DF abaixo)
+    st.session_state.sel_nome = nome_clicado
 
 # --- 2. FUNÇÕES DE SUPORTE ---
 def _normalizar(texto):
@@ -42,7 +46,7 @@ def escurecer_cor(hex_color, fator=0.20):
     new_rgb = colorsys.hls_to_rgb(hls[0], max(0, hls[1] - fator), min(1, hls[2] + 0.1))
     return '#%02x%02x%02x' % (int(new_rgb[0]*255), int(new_rgb[1]*255), int(new_rgb[2]*255))
 
-# --- 3. CSS CUSTOMIZADO ---
+# --- 3. CSS ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap');
@@ -50,7 +54,6 @@ html, body, [class*="st-"] { font-family: 'Manrope', sans-serif; }
 header { visibility: hidden !important; }
 .block-container { padding-top: 1rem !important; }
 
-/* Legenda Lateral Compacta */
 .legend-sidebar {
     background: #ffffff; border-radius: 12px; padding: 12px; border: 1px solid #eee;
     box-shadow: 0 2px 8px rgba(0,0,0,0.05); max-height: 75vh; overflow-y: auto;
@@ -66,11 +69,11 @@ header { visibility: hidden !important; }
 .info-label { color: #7443F6; font-size: 0.7rem; font-weight: 800; }
 .info-text { font-size: 0.85rem; color: #333; line-height: 1.3; }
 
-/* Overlay de Loading */
 #loading-overlay {
     position: absolute; top:0; left:0; width:100%; height:100%;
     background: white; display:flex; flex-direction:column;
     align-items:center; justify-content:center; z-index:9999;
+    transition: opacity 0.5s ease;
 }
 .spinner {
     width: 60px; height: 60px; border: 6px solid #f3f3f3;
@@ -82,7 +85,6 @@ header { visibility: hidden !important; }
 """, unsafe_allow_html=True)
 
 # --- 4. LOGIN ---
-if "logado" not in st.session_state: st.session_state.logado = False
 if not st.session_state.logado:
     _, col2, _ = st.columns([1, 1.2, 1])
     with col2:
@@ -111,13 +113,13 @@ lista_nomes = sorted(df["NOME"].unique().tolist())
 lista_areas = sorted(df["ÁREA"].unique().tolist())
 nome_para_area = dict(zip(df["NOME"], df["ÁREA"]))
 
-# Sincronização de área caso o clique tenha vindo pela URL
+# Sincroniza área se o nome mudou pelo clique
 if st.session_state.sel_nome != "Nenhum selecionado":
     area_clicada = nome_para_area.get(st.session_state.sel_nome)
     if area_clicada:
         st.session_state.sel_area = area_clicada
 
-# --- 6. INTERFACE SUPERIOR ---
+# --- 6. INTERFACE ---
 c1, c2, c3 = st.columns([2.5, 2.5, 0.6])
 with c1:
     area_sel = st.selectbox("🏢 Área de Visão:", ["Empresa inteira"] + lista_areas, 
@@ -133,30 +135,27 @@ with c3:
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
     if st.button("SAIR", use_container_width=True):
         st.session_state.logado = False
-        st.query_params.clear() # Limpa URL ao sair
+        st.query_params.clear()
         st.rerun()
 
-# --- 7. COLUNAS LATERAIS ---
+# --- 7. ORGANOGRAMA ---
 col_side, col_main = st.columns([0.8, 5])
 
 with col_side:
     if busca_nome != "Nenhum selecionado":
         row = df[df["NOME"] == busca_nome].iloc[0]
-        st.markdown(f'<div class="info-box"><div class="info-label">DESCRIÇÃO DA ÁREA</div><div class="info-text">{row["Descricao_Area"][:150]}...</div></div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="info-box"><div class="info-label">INFO DA POSIÇÃO</div><div class="info-text">{row["Info_Posicao"][:150]}...</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="info-box"><div class="info-label">DESCRIÇÃO DA ÁREA</div><div class="info-text">{row["Descricao_Area"][:100]}...</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="info-box"><div class="info-label">POSIÇÃO</div><div class="info-text">{row["Info_Posicao"][:100]}...</div></div>', unsafe_allow_html=True)
     
-    # Legenda Lateral
     palette = ["#FF00FF","#00FFFF","#FFFF00","#FF4500","#32CD32","#7B68EE","#FF1493","#A9A9A9","#ADFF2F","#FFD700"]
     area_color = {a: palette[i % len(palette)] for i, a in enumerate(lista_areas)}
-    st.markdown('<div class="legend-sidebar">', unsafe_allow_html=True)
-    st.markdown('<div class="legend-title">Legenda</div>', unsafe_allow_html=True)
+    st.markdown('<div class="legend-sidebar"><div class="legend-title">Legenda</div>', unsafe_allow_html=True)
     st.markdown('<div class="legend-item"><div class="legend-color" style="background:#000000"></div>SELECIONADO</div>', unsafe_allow_html=True)
     for area, color in area_color.items():
         st.markdown(f'<div class="legend-item"><div class="legend-color" style="background:{color}"></div>{area}</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
 with col_main:
-    # Filtro de dados
     if area_sel == "Empresa inteira": df_view = df
     else:
         df_area = df[df["ÁREA"] == area_sel]
@@ -164,15 +163,12 @@ with col_main:
         df_lideres = df[df["NOME"].isin(lideres_necessarios)]
         df_view = pd.concat([df_area, df_lideres]).drop_duplicates(subset=["NOME"])
 
-    # Nós e Arestas
     nodes = []
     for _, row in df_view.iterrows():
         n, c = row["NOME"], row["CARGO"].upper()
-        # Escala de tamanhos
         if "CEO" in c or "FOUNDER" in c: fs, mg, bw = 65, 50, 9
         elif any(x in c for x in ["DIRETOR", "GERENTE", "HEAD", "COORDENADOR", "LEAD"]): fs, mg, bw = 48, 38, 7
         else: fs, mg, bw = 38, 28, 5
-
         cor_b = area_color.get(row["ÁREA"], "#7443F6")
         cor_f = "#000000"
         if n == busca_nome: cor_b, cor_f = "#000000", "#FFFFFF"
@@ -187,12 +183,10 @@ with col_main:
     edges = [{"from": r["LIDER DIRETO"], "to": r["NOME"], "arrows": "to", "color": "#888888", "width": 5} 
              for _, r in df_view.iterrows() if r["LIDER DIRETO"] in df_view["NOME"].values]
 
-    # --- HTML COM CLIQUE E LOADING DE 7 SEGUNDOS ---
     html_vis = f"""
     <div id="loading-overlay">
         <div class="spinner"></div>
         <div style="font-weight:700; color:#7443F6; font-family:sans-serif;">Montando o organograma...</div>
-        <div style="font-size:0.8rem; color:#999; margin-top:10px;">Ajustando posições finais</div>
     </div>
     <div id="mynetwork" style="height: 850px; background: #ffffff;"></div>
     <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
@@ -214,30 +208,18 @@ with col_main:
         
         var network = new vis.Network(container, data, options);
 
-        // Funcao para esconder o loading (minimo 7 segundos)
-        var loadingHidden = false;
         function hideLoading() {{
-            if (!loadingHidden) {{
-                document.getElementById('loading-overlay').style.opacity = '0';
-                setTimeout(() => {{ document.getElementById('loading-overlay').style.display = 'none'; }}, 500);
-                loadingHidden = true;
-            }}
+            document.getElementById('loading-overlay').style.opacity = '0';
+            setTimeout(() => {{ document.getElementById('loading-overlay').style.display = 'none'; }}, 500);
         }}
 
-        // Garante 7 segundos de loading para estabilizacao total
+        // MÍNIMO 7 SEGUNDOS DE LOADING
         setTimeout(hideLoading, 7000);
-        
-        // Se estabilizar antes dos 7s, o setTimeout acima ainda manda. 
-        // Se demorar mais que 7s, estabilização esconde.
-        network.on("stabilizationIterationsDone", function() {{
-             // Opcional: hideLoading(); 
-        }});
+        network.on("stabilizationIterationsDone", hideLoading);
 
-        // LÓGICA DE CLIQUE REAL
         network.on("click", function (params) {{
             if (params.nodes.length > 0) {{
                 var nomeClicado = params.nodes[0];
-                // Comunicação com a URL do Streamlit
                 var url = new URL(window.parent.location.href);
                 url.searchParams.set("colab", nomeClicado);
                 window.parent.location.href = url.href;
