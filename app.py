@@ -27,7 +27,6 @@ def carregar_dados():
     url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTLRqVZ9LWZMaPQ9MFGvOcQ8i-_ljOeKPO8w1jpwTscup0VM1ERFYgwitfmH0Zjfo-u9-fjfd60goF1/pub?output=csv"
     df = pd.read_csv(url).fillna("")
     df.columns = df.columns.str.strip()
-    # Limpeza rigorosa para garantir que a busca funcione
     for col in ["ÁREA", "NOME", "Descricao_Area", "Info_Posicao"]:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip()
@@ -37,8 +36,6 @@ def carregar_dados():
 df = carregar_dados()
 lista_nomes = sorted(df["NOME"].unique().tolist())
 lista_areas = sorted(df["ÁREA"].unique().tolist())
-
-# Mapeamento rápido para não errar a área
 nome_para_area = dict(zip(df["NOME"], df["ÁREA"]))
 
 # --- 3. ESTADO E FILTROS ---
@@ -80,11 +77,10 @@ with c4:
         st.session_state.logado = False
         st.rerun()
 
-# --- 5. QUADROS ROXOS (DESCRIÇÕES) ---
+# --- 5. QUADROS ROXOS (LOGICA DE BUSCA MELHORADA) ---
 st.markdown("""
 <style>
     .stAlert { background-color: #f3f0ff !important; border: 1px solid #7443F6 !important; color: #2e1065 !important; border-radius: 10px !important; }
-    .stAlert p { color: #2e1065 !important; font-weight: 500; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -92,30 +88,29 @@ if st.session_state.sel_area != "Empresa inteira" or st.session_state.sel_nome !
     st.markdown("<br>", unsafe_allow_html=True)
     inf1, inf2 = st.columns(2)
     
-    # Lógica para Descrição da Área
-    with inf1:
-        area_atual = st.session_state.sel_area
-        if area_atual != "Empresa inteira":
-            # Busca qualquer linha que tenha a descrição preenchida para esta área
-            dados_area = df[(df["ÁREA"] == area_atual) & (df["Descricao_Area"] != "") & (df["Descricao_Area"] != "nan")]
-            if not dados_area.empty:
-                texto_area = dados_area["Descricao_Area"].iloc[0]
-                st.info(f"**🏢 Sobre a área {area_atual}:**\n\n{texto_area}")
+    # Define qual área pesquisar: Se localizou alguém, usa a área desse alguém. Se não, usa o filtro de área.
+    area_para_pesquisa = st.session_state.sel_area
+    if st.session_state.sel_nome != "Nenhum selecionado":
+        area_para_pesquisa = nome_para_area.get(st.session_state.sel_nome, st.session_state.sel_area)
 
-    # Lógica para Informação da Posição
+    with inf1:
+        if area_para_pesquisa != "Empresa inteira":
+            # Busca a descrição em qualquer linha que pertença a essa área e tenha texto
+            busca_desc = df[(df["ÁREA"] == area_para_pesquisa) & (df["Descricao_Area"] != "") & (df["Descricao_Area"] != "nan")]
+            if not busca_desc.empty:
+                st.info(f"**🏢 Sobre a área {area_para_pesquisa}:**\n\n{busca_desc['Descricao_Area'].iloc[0]}")
+
     with inf2:
         if st.session_state.sel_nome != "Nenhum selecionado":
-            nome_atual = st.session_state.sel_nome
-            dados_colab = df[df["NOME"] == nome_atual]
-            if not dados_colab.empty:
-                texto_pos = dados_colab["Info_Posicao"].iloc[0]
+            busca_pos = df[df["NOME"] == st.session_state.sel_nome]
+            if not busca_pos.empty:
+                texto_pos = busca_pos["Info_Posicao"].iloc[0]
                 if texto_pos and texto_pos.lower() != "nan" and texto_pos != "":
-                    st.info(f"**👤 Posição de {nome_atual}:**\n\n{texto_pos}")
+                    st.info(f"**👤 Posição de {st.session_state.sel_nome}:**\n\n{texto_pos}")
     st.markdown("---")
 
 # --- 6. ORGANOGRAMA ---
 col_side, col_main = st.columns([0.8, 5])
-
 palette = ["#FF00FF","#00FFFF","#FFFF00","#FF4500","#32CD32","#7B68EE","#FF1493","#A9A9A9","#ADFF2F","#FFD700"]
 area_color = {a: palette[i % len(palette)] for i, a in enumerate(lista_areas)}
 
@@ -141,31 +136,20 @@ with col_main:
         cor_b = area_color.get(row["ÁREA"], "#7443F6")
         cor_f = "#000000"
         if n == st.session_state.sel_nome: cor_b, cor_f = "#2B7CE9", "#FFFFFF"
+        nodes.append({"id": n, "label": f"<b>{n}</b>\n{row['CARGO']}", "color": {"background": cor_b, "border": "#333333"}, "font": {"multi": "html", "color": cor_f, "size": 28}, "shape": "box", "margin": 15})
 
-        nodes.append({
-            "id": n, "label": f"<b>{n}</b>\n{row['CARGO']}",
-            "color": {"background": cor_b, "border": "#333333"},
-            "font": {"multi": "html", "color": cor_f, "size": 28, "face": "Manrope"},
-            "shape": "box", "margin": 15
-        })
-
-    edges = [{"from": r["LIDER DIRETO"], "to": r["NOME"], "arrows": "to", "color": "#000000", "width": 3} 
-             for _, r in df_view.iterrows() if r["LIDER DIRETO"] in df_view["NOME"].values]
+    edges = [{"from": r["LIDER DIRETO"], "to": r["NOME"], "arrows": "to", "color": "#000000", "width": 3} for _, r in df_view.iterrows() if r["LIDER DIRETO"] in df_view["NOME"].values]
 
     html_vis = f"""
     <div id="loading" style="position:absolute; width:100%; height:100%; background:white; display:flex; align-items:center; justify-content:center; z-index:999; font-family:sans-serif;">
         <div style="text-align:center;"><div style="width:40px; height:40px; border:4px solid #f3f3f3; border-top:4px solid #7443F6; border-radius:50%; animation:spin 1s linear infinite;"></div><p style="margin-top:10px; font-weight:bold; color:#7443F6;">Montando o organograma...</p></div>
     </div>
-    <style>@keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}</style>
     <div id="mynetwork" style="height: 750px; background: white; border-radius:15px; border: 1px solid #ddd;"></div>
     <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
     <script>
         var container = document.getElementById('mynetwork');
         var data = {{ nodes: new vis.DataSet({json.dumps(nodes)}), edges: new vis.DataSet({json.dumps(edges)}) }};
-        var options = {{
-            physics: {{ enabled: true, solver: 'forceAtlas2Based', forceAtlas2Based: {{ gravitationalConstant: {repulsao}, springLength: 180, avoidOverlap: 1 }}, stabilization: {{ iterations: 200 }} }},
-            interaction: {{ dragNodes: true, zoomView: true, dragView: true }}
-        }};
+        var options = {{ physics: {{ enabled: true, solver: 'forceAtlas2Based', forceAtlas2Based: {{ gravitationalConstant: {repulsao}, springLength: 180, avoidOverlap: 1 }}, stabilization: {{ iterations: 200 }} }}, interaction: {{ dragNodes: true, zoomView: true, dragView: true }} }};
         var network = new vis.Network(container, data, options);
         network.once('stabilized', function() {{ 
             var search = "{st.session_state.sel_nome}";
