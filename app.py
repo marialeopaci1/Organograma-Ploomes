@@ -81,31 +81,26 @@ with c4:
         st.session_state.logado = False
         st.rerun()
 
-# --- 5. DESCRIÇÕES DA PLANILHA (CORRIGIDO) ---
+# --- 5. DESCRIÇÕES EXIBIDAS (Descricao_Area e Info_Posicao) ---
 if st.session_state.sel_area != "Empresa inteira" or st.session_state.sel_nome != "Nenhum selecionado":
-    st.markdown("---")
-    i1, i2 = st.columns(2)
-    with i1:
-        # Puxa a descrição da área selecionada ou da área do colaborador selecionado
-        area_atual = st.session_state.sel_area
-        dados_area = df[df["ÁREA"] == area_atual]
-        if not dados_area.empty:
-            # Puxa da coluna 'Descricao_Area' da planilha
-            desc = dados_area["Descricao_Area"].iloc[0]
-            if desc:
-                st.info(f"**Sobre a área {area_atual}:**\n\n{desc}")
-    with i2:
-        # Puxa a info da posição do colaborador selecionado
+    st.write("") # Espaçador
+    col_info1, col_info2 = st.columns(2)
+    
+    with col_info1:
+        # Puxa Descricao_Area
+        area_alvo = st.session_state.sel_area
+        desc_text = df[df["ÁREA"] == area_alvo]["Descricao_Area"].iloc[0] if area_alvo != "Empresa inteira" else ""
+        if desc_text:
+            st.info(f"**Sobre a área {area_alvo}:**\n\n{desc_text}")
+            
+    with col_info2:
+        # Puxa Info_Posicao
         if st.session_state.sel_nome != "Nenhum selecionado":
-            dados_colab = df[df["NOME"] == st.session_state.sel_nome]
-            if not dados_colab.empty:
-                # Puxa da coluna 'Info_Posicao' da planilha
-                pos_info = dados_colab["Info_Posicao"].iloc[0]
-                if pos_info:
-                    st.success(f"**Posição de {st.session_state.sel_nome}:**\n\n{pos_info}")
-    st.markdown("---")
+            pos_text = df[df["NOME"] == st.session_state.sel_nome]["Info_Posicao"].iloc[0]
+            if pos_text:
+                st.success(f"**Posição de {st.session_state.sel_nome}:**\n\n{pos_text}")
 
-# --- 6. ORGANOGRAMA ---
+# --- 6. ORGANOGRAMA E CSS ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap');
@@ -113,6 +108,19 @@ html, body, [class*="st-"] { font-family: 'Manrope', sans-serif; }
 .legend-sidebar { background: white; border-radius: 12px; padding: 15px; border: 1px solid #eee; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
 .legend-item { display: flex; align-items: center; margin-bottom: 8px; font-size: 0.85rem; font-weight: 700; }
 .legend-color { width: 18px; height: 18px; border-radius: 4px; margin-right: 12px; border: 1px solid rgba(0,0,0,0.1); }
+
+/* Overlay de Loading */
+#loading-overlay {
+    position: absolute; top:0; left:0; width:100%; height:100%;
+    background: white; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; z-index:9999;
+}
+.spinner {
+    width: 60px; height: 60px; border: 6px solid #f3f3f3;
+    border-top: 6px solid #7443F6; border-radius: 50%;
+    animation: spin 1s linear infinite; margin-bottom: 20px;
+}
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 </style>
 """, unsafe_allow_html=True)
 
@@ -131,8 +139,8 @@ with col_side:
 with col_main:
     if st.session_state.sel_area == "Empresa inteira":
         df_view = df
-        repulsao = -1200 # Reduzido para aproximar os cards
-        distancia_mola = 180 # Reduzido para aproximar os cards
+        repulsao = -1200
+        distancia_mola = 180
     else:
         df_view = df[df["ÁREA"] == st.session_state.sel_area]
         lideres_nomes = df_view["LIDER DIRETO"].unique()
@@ -145,26 +153,26 @@ with col_main:
         n = row["NOME"]
         cor_b = area_color.get(row["ÁREA"], "#7443F6")
         cor_f = "#000000"
-        
-        # Destaque para o selecionado
-        if n == st.session_state.sel_nome: 
-            cor_b, cor_f = "#2B7CE9", "#FFFFFF"
+        if n == st.session_state.sel_nome: cor_b, cor_f = "#2B7CE9", "#FFFFFF"
 
         nodes.append({
             "id": n, 
             "label": f"<b>{n}</b>\n{row['CARGO']}",
             "color": {"background": cor_b, "border": escurecer_cor(cor_b)},
-            # TAMANHO DA LETRA AUMENTADO PARA 26 (Nome) e mantido proporcional
             "font": {"multi": "html", "color": cor_f, "face": "Manrope", "size": 26},
-            "shape": "box", 
-            "margin": 18,
-            "borderWidth": 2
+            "shape": "box", "margin": 18, "borderWidth": 2
         })
 
-    edges = [{"from": r["LIDER DIRETO"], "to": r["NOME"], "arrows": "to", "color": "#BBBBBB", "width": 1.5} 
+    # SETA MAIS ESCURA E GROSSA (Black #000000)
+    edges = [{"from": r["LIDER DIRETO"], "to": r["NOME"], "arrows": "to", "color": "#000000", "width": 3} 
              for _, r in df_view.iterrows() if r["LIDER DIRETO"] in df_view["NOME"].values]
 
     html_vis = f"""
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <div style="font-weight:700; color:#7443F6; font-family:sans-serif; font-size:1.2rem;">Montando o organograma...</div>
+        <div style="color:#999; margin-top:10px; font-family:sans-serif;">Estabilizando visualização</div>
+    </div>
     <div id="mynetwork" style="height: 750px; background: white; border-radius:15px; border: 1px solid #f0f0f0;"></div>
     <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
     <script>
@@ -174,18 +182,21 @@ with col_main:
             physics: {{
                 enabled: true,
                 solver: 'forceAtlas2Based',
-                forceAtlas2Based: {{ 
-                    gravitationalConstant: {repulsao}, 
-                    centralGravity: 0.005, 
-                    springLength: {distancia_mola}, 
-                    avoidOverlap: 1 
-                }},
-                stabilization: {{ iterations: 150 }}
+                forceAtlas2Based: {{ gravitationalConstant: {repulsao}, centralGravity: 0.005, springLength: {distancia_mola}, avoidOverlap: 1 }},
+                stabilization: {{ iterations: 200 }}
             }},
             interaction: {{ dragNodes: true, zoomView: true, dragView: true, hover: true }}
         }};
         var network = new vis.Network(container, data, options);
         
+        function hideLoading() {{
+            document.getElementById('loading-overlay').style.opacity = '0';
+            setTimeout(() => {{ document.getElementById('loading-overlay').style.display = 'none'; }}, 800);
+        }}
+
+        // Carregamento de 10 segundos para estabilizar
+        setTimeout(hideLoading, 10000);
+
         network.once('stabilized', function() {{
             var search = "{st.session_state.sel_nome}";
             if(search !== "Nenhum selecionado") {{
@@ -193,6 +204,7 @@ with col_main:
             }} else {{
                 network.fit();
             }}
+            hideLoading();
         }});
     </script>
     """
