@@ -27,15 +27,18 @@ def carregar_dados():
     url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTLRqVZ9LWZMaPQ9MFGvOcQ8i-_ljOeKPO8w1jpwTscup0VM1ERFYgwitfmH0Zjfo-u9-fjfd60goF1/pub?output=csv"
     df = pd.read_csv(url).fillna("")
     df.columns = df.columns.str.strip()
+    # Limpeza rigorosa para garantir que a busca funcione
     for col in ["ÁREA", "NOME", "Descricao_Area", "Info_Posicao"]:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip()
-    df["ÁREA"] = df["ÁREA"].str.upper()
+    df["ÁREA_BUSCA"] = df["ÁREA"].str.upper()
     return df
 
 df = carregar_dados()
 lista_nomes = sorted(df["NOME"].unique().tolist())
 lista_areas = sorted(df["ÁREA"].unique().tolist())
+
+# Mapeamento rápido para não errar a área
 nome_para_area = dict(zip(df["NOME"], df["ÁREA"]))
 
 # --- 3. ESTADO E FILTROS ---
@@ -77,60 +80,44 @@ with c4:
         st.session_state.logado = False
         st.rerun()
 
-# --- 5. EXIBIÇÃO DAS DESCRIÇÕES (ROXO E CORRIGIDO) ---
-# CSS para deixar os quadros roxos (estilo Ploomes)
+# --- 5. QUADROS ROXOS (DESCRIÇÕES) ---
 st.markdown("""
 <style>
-    .stAlert { background-color: #f3f0ff; border-color: #7443F6; color: #2e1065; }
-    .stAlert svg { fill: #7443F6; }
+    .stAlert { background-color: #f3f0ff !important; border: 1px solid #7443F6 !important; color: #2e1065 !important; border-radius: 10px !important; }
+    .stAlert p { color: #2e1065 !important; font-weight: 500; }
 </style>
 """, unsafe_allow_html=True)
 
 if st.session_state.sel_area != "Empresa inteira" or st.session_state.sel_nome != "Nenhum selecionado":
-    st.markdown("---")
-    col_inf1, col_inf2 = st.columns(2)
+    st.markdown("<br>", unsafe_allow_html=True)
+    inf1, inf2 = st.columns(2)
     
-    with col_inf1:
-        # Se localizou alguém, a área de referência é a desse colaborador
-        area_ref = st.session_state.sel_area
-        if area_ref != "Empresa inteira":
-            linha_area = df[df["ÁREA"] == area_ref].iloc[0]
-            texto_area = linha_area.get("Descricao_Area", "")
-            if texto_area and texto_area.lower() != "nan":
-                st.info(f"**🏢 Sobre a área {area_ref}:**\n\n{texto_area}")
+    # Lógica para Descrição da Área
+    with inf1:
+        area_atual = st.session_state.sel_area
+        if area_atual != "Empresa inteira":
+            # Busca qualquer linha que tenha a descrição preenchida para esta área
+            dados_area = df[(df["ÁREA"] == area_atual) & (df["Descricao_Area"] != "") & (df["Descricao_Area"] != "nan")]
+            if not dados_area.empty:
+                texto_area = dados_area["Descricao_Area"].iloc[0]
+                st.info(f"**🏢 Sobre a área {area_atual}:**\n\n{texto_area}")
 
-    with col_inf2:
+    # Lógica para Informação da Posição
+    with inf2:
         if st.session_state.sel_nome != "Nenhum selecionado":
-            linha_colab = df[df["NOME"] == st.session_state.sel_nome].iloc[0]
-            texto_pos = linha_colab.get("Info_Posicao", "")
-            if texto_pos and texto_pos.lower() != "nan":
-                st.info(f"**👤 Posição de {st.session_state.sel_nome}:**\n\n{texto_pos}")
+            nome_atual = st.session_state.sel_nome
+            dados_colab = df[df["NOME"] == nome_atual]
+            if not dados_colab.empty:
+                texto_pos = dados_colab["Info_Posicao"].iloc[0]
+                if texto_pos and texto_pos.lower() != "nan" and texto_pos != "":
+                    st.info(f"**👤 Posição de {nome_atual}:**\n\n{texto_pos}")
     st.markdown("---")
 
 # --- 6. ORGANOGRAMA ---
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap');
-html, body, [class*="st-"] { font-family: 'Manrope', sans-serif; }
-#loading-overlay {
-    position: absolute; top:0; left:0; width:100%; height:100%;
-    background: white; display:flex; flex-direction:column;
-    align-items:center; justify-content:center; z-index:9999;
-}
-.spinner {
-    width: 50px; height: 50px; border: 5px solid #f3f3f3;
-    border-top: 5px solid #7443F6; border-radius: 50%;
-    animation: spin 1s linear infinite;
-}
-@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-</style>
-""", unsafe_allow_html=True)
-
 col_side, col_main = st.columns([0.8, 5])
 
 palette = ["#FF00FF","#00FFFF","#FFFF00","#FF4500","#32CD32","#7B68EE","#FF1493","#A9A9A9","#ADFF2F","#FFD700"]
-areas_unicas = sorted(df["ÁREA"].unique().tolist())
-area_color = {a: palette[i % len(palette)] for i, a in enumerate(areas_unicas)}
+area_color = {a: palette[i % len(palette)] for i, a in enumerate(lista_areas)}
 
 with col_side:
     st.markdown('<div style="background:white; padding:15px; border-radius:10px; border:1px solid #eee;"><b>LEGENDA</b><br><br>', unsafe_allow_html=True)
@@ -143,10 +130,10 @@ with col_main:
         df_view = df
         repulsao = -1300
     else:
-        df_view = df[df["ÁREA"] == st.session_state.sel_area]
+        df_view = df[df["ÁREA"] == st.session_state.sel_area].copy()
         lideres = df_view["LIDER DIRETO"].unique()
         df_view = pd.concat([df_view, df[df["NOME"].isin(lideres)]]).drop_duplicates(subset=["NOME"])
-        repulsao = -800
+        repulsao = -850
 
     nodes = []
     for _, row in df_view.iterrows():
@@ -158,7 +145,7 @@ with col_main:
         nodes.append({
             "id": n, "label": f"<b>{n}</b>\n{row['CARGO']}",
             "color": {"background": cor_b, "border": "#333333"},
-            "font": {"multi": "html", "color": cor_f, "size": 28},
+            "font": {"multi": "html", "color": cor_f, "size": 28, "face": "Manrope"},
             "shape": "box", "margin": 15
         })
 
@@ -166,36 +153,26 @@ with col_main:
              for _, r in df_view.iterrows() if r["LIDER DIRETO"] in df_view["NOME"].values]
 
     html_vis = f"""
-    <div id="loading-overlay"><div class="spinner"></div><p style="margin-top:15px; font-weight:bold; color:#7443F6;">Montando o organograma...</p></div>
+    <div id="loading" style="position:absolute; width:100%; height:100%; background:white; display:flex; align-items:center; justify-content:center; z-index:999; font-family:sans-serif;">
+        <div style="text-align:center;"><div style="width:40px; height:40px; border:4px solid #f3f3f3; border-top:4px solid #7443F6; border-radius:50%; animation:spin 1s linear infinite;"></div><p style="margin-top:10px; font-weight:bold; color:#7443F6;">Montando o organograma...</p></div>
+    </div>
+    <style>@keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}</style>
     <div id="mynetwork" style="height: 750px; background: white; border-radius:15px; border: 1px solid #ddd;"></div>
     <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
     <script>
         var container = document.getElementById('mynetwork');
         var data = {{ nodes: new vis.DataSet({json.dumps(nodes)}), edges: new vis.DataSet({json.dumps(edges)}) }};
         var options = {{
-            physics: {{
-                enabled: true,
-                solver: 'forceAtlas2Based',
-                forceAtlas2Based: {{ gravitationalConstant: {repulsao}, centralGravity: 0.005, springLength: 180, avoidOverlap: 1 }},
-                stabilization: {{ iterations: 200 }}
-            }},
+            physics: {{ enabled: true, solver: 'forceAtlas2Based', forceAtlas2Based: {{ gravitationalConstant: {repulsao}, springLength: 180, avoidOverlap: 1 }}, stabilization: {{ iterations: 200 }} }},
             interaction: {{ dragNodes: true, zoomView: true, dragView: true }}
         }};
         var network = new vis.Network(container, data, options);
-        
-        function hideLoading() {{
-            document.getElementById('loading-overlay').style.opacity = '0';
-            setTimeout(() => {{ document.getElementById('loading-overlay').style.display = 'none'; }}, 500);
-        }}
-
-        network.once('stabilized', function() {{
+        network.once('stabilized', function() {{ 
             var search = "{st.session_state.sel_nome}";
-            if(search !== "Nenhum selecionado") {{
-                network.focus(search, {{ scale: 0.7, animation: true }});
-            }}
-            hideLoading();
+            if(search !== "Nenhum selecionado") network.focus(search, {{ scale: 0.7, animation: true }});
+            document.getElementById('loading').style.display = 'none'; 
         }});
-        setTimeout(hideLoading, 5000);
+        setTimeout(() => {{ document.getElementById('loading').style.display = 'none'; }}, 5000);
     </script>
     """
     components.html(html_vis, height=770)
