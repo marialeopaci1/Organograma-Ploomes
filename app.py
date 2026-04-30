@@ -22,14 +22,12 @@ if not st.session_state.logado:
                 st.rerun()
     st.stop()
 
-# --- FUNÇÃO DE NORMALIZAÇÃO (A MUDANÇA SOLICITADA) ---
+# --- FUNÇÃO DE NORMALIZAÇÃO ---
 def normalizar_nome(nome):
     if not nome: return ""
     nome = str(nome).upper().strip()
-    # Caso específico do Barba
     if "LUIZ FERNANDO BARBA" in nome:
         return "LUIZ FERNANDO BARBA"
-    # Remove acentos
     return "".join(c for c in unicodedata.normalize('NFD', nome) if unicodedata.category(c) != 'Mn')
 
 # --- 2. CARGA DE DADOS ---
@@ -38,16 +36,12 @@ def carregar_dados():
     url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTLRqVZ9LWZMaPQ9MFGvOcQ8i-_ljOeKPO8w1jpwTscup0VM1ERFYgwitfmH0Zjfo-u9-fjfd60goF1/pub?output=csv"
     df = pd.read_csv(url).fillna("")
     df.columns = df.columns.str.strip()
-    
     for col in ["ÁREA", "NOME", "LIDER DIRETO", "Descricao_Area", "Info_Posicao"]:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip()
-            
     df["ÁREA_BUSCA"] = df["ÁREA"].str.upper()
-    # Criamos colunas normalizadas para fazer o "Match" da hierarquia sem erro de acento ou nome curto
     df["NOME_NORM"] = df["NOME"].apply(normalizar_nome)
     df["LIDER_NORM"] = df["LIDER DIRETO"].apply(normalizar_nome)
-    
     return df
 
 df = carregar_dados()
@@ -74,6 +68,13 @@ def mudar_area():
 def voltar_empresa_inteira():
     st.session_state.sel_area = "Empresa inteira"
     st.session_state.sel_nome = "Nenhum selecionado"
+
+def escurecer_cor(hex_color, fator=0.20):
+    hex_color = hex_color.lstrip('#')
+    rgb = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+    hls = colorsys.rgb_to_hls(rgb[0]/255.0, rgb[1]/255.0, rgb[2]/255.0)
+    new_rgb = colorsys.hls_to_rgb(hls[0], max(0, hls[1] - fator), min(1, hls[2] + 0.1))
+    return '#%02x%02x%02x' % (int(new_rgb[0]*255), int(new_rgb[1]*255), int(new_rgb[2]*255))
 
 # --- 4. INTERFACE SUPERIOR ---
 c1, c2, c3, c4 = st.columns([2, 2, 1, 0.6])
@@ -132,22 +133,41 @@ with col_side:
 with col_main:
     if st.session_state.sel_area == "Empresa inteira":
         df_view = df
-        repulsao = -1300
+        repulsao = -2500 # Aumentado para acomodar o CEO gigante
     else:
         df_view = df[df["ÁREA"] == st.session_state.sel_area].copy()
         lideres_norm = df_view["LIDER_NORM"].unique()
         df_view = pd.concat([df_view, df[df["NOME_NORM"].isin(lideres_norm)]]).drop_duplicates(subset=["NOME"])
-        repulsao = -850
+        repulsao = -1000
 
     nodes = []
     for _, row in df_view.iterrows():
         n = row["NOME"]
+        cargo = row["CARGO"].upper()
+        
+        # LÓGICA DE TAMANHO DIFERENCIADO PARA O CEO
+        is_ceo = "CEO" in cargo or "MATHEUS EID PAGANI" in n.upper()
+        
+        if is_ceo:
+            tamanho_fonte, margem_interna, largura_max, borda = 80, 45, 600, 8
+        else:
+            tamanho_fonte, margem_interna, largura_max, borda = 28, 15, 250, 2
+
         cor_b = area_color.get(row["ÁREA"], "#7443F6")
         cor_f = "#000000"
         if n == st.session_state.sel_nome: cor_b, cor_f = "#2B7CE9", "#FFFFFF"
-        nodes.append({"id": row["NOME_NORM"], "label": f"<b>{n}</b>\n{row['CARGO']}", "color": {"background": cor_b, "border": "#333333"}, "font": {"multi": "html", "color": cor_f, "size": 28}, "shape": "box", "margin": 15})
 
-    # Hierarquia baseada nas colunas NORMALIZADAS
+        nodes.append({
+            "id": row["NOME_NORM"], 
+            "label": f"<b>{n}</b>\n{row['CARGO']}", 
+            "color": {"background": cor_b, "border": escurecer_cor(cor_b)}, 
+            "font": {"multi": "html", "color": cor_f, "size": tamanho_fonte, "face": "Manrope"}, 
+            "shape": "box", 
+            "margin": margem_interna,
+            "borderWidth": borda,
+            "widthConstraint": {"maximum": largura_max}
+        })
+
     edges = [{"from": r["LIDER_NORM"], "to": r["NOME_NORM"], "arrows": "to", "color": "#000000", "width": 3} 
              for _, r in df_view.iterrows() if r["LIDER_NORM"] in df_view["NOME_NORM"].values]
 
@@ -160,7 +180,15 @@ with col_main:
     <script>
         var container = document.getElementById('mynetwork');
         var data = {{ nodes: new vis.DataSet({json.dumps(nodes)}), edges: new vis.DataSet({json.dumps(edges)}) }};
-        var options = {{ physics: {{ enabled: true, solver: 'forceAtlas2Based', forceAtlas2Based: {{ gravitationalConstant: {repulsao}, springLength: 180, avoidOverlap: 1 }}, stabilization: {{ iterations: 200 }} }}, interaction: {{ dragNodes: true, zoomView: true, dragView: true }} }};
+        var options = {{ 
+            physics: {{ 
+                enabled: true, 
+                solver: 'forceAtlas2Based', 
+                forceAtlas2Based: {{ gravitationalConstant: {repulsao}, centralGravity: 0.005, springLength: 220, avoidOverlap: 1 }}, 
+                stabilization: {{ iterations: 200 }} 
+            }}, 
+            interaction: {{ dragNodes: true, zoomView: true, dragView: true }} 
+        }};
         var network = new vis.Network(container, data, options);
         network.once('stabilized', function() {{ 
             var searchNorm = "{normalizar_nome(st.session_state.sel_nome)}";
