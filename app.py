@@ -131,14 +131,18 @@ with col_side:
     st.markdown('</div>', unsafe_allow_html=True)
 
 with col_main:
-    if st.session_state.sel_area == "Empresa inteira":
+    is_full = st.session_state.sel_area == "Empresa inteira"
+    
+    if is_full:
         df_view = df
-        repulsao = -3000
+        repulsao = -5000 
+        solver = 'barnesHut' # Motor mais rápido para grandes volumes
     else:
         df_view = df[df["ÁREA"] == st.session_state.sel_area].copy()
         l_norm = df_view["LIDER_NORM"].unique()
         df_view = pd.concat([df_view, df[df["NOME_NORM"].isin(l_norm)]]).drop_duplicates(subset=["NOME"])
         repulsao = -1500
+        solver = 'forceAtlas2Based'
 
     nodes = []
     for _, row in df_view.iterrows():
@@ -162,7 +166,7 @@ with col_main:
     html_vis = f"""
     <div id="loading" style="position:absolute; width:100%; height:100%; background:white; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:999; font-family:sans-serif;">
         <div style="width:40px; height:40px; border:4px solid #f3f3f3; border-top:4px solid #7443F6; border-radius:50%; animation:spin 1s linear infinite;"></div>
-        <p style="margin-top:10px; font-weight:bold; color:#7443F6;">Otimizando visualização...</p>
+        <p style="margin-top:10px; font-weight:bold; color:#7443F6;">Carregando organograma completo...</p>
     </div>
     <div id="mynetwork" style="height: 750px; background: white; border-radius:15px; border: 1px solid #ddd;"></div>
     <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
@@ -172,23 +176,33 @@ with col_main:
         var options = {{ 
             physics: {{ 
                 enabled: true, 
-                solver: 'forceAtlas2Based', 
-                forceAtlas2Based: {{ gravitationalConstant: {repulsao}, centralGravity: 0.005, springLength: 250, avoidOverlap: 1 }}, 
-                stabilization: {{ enabled: true, iterations: 1000 }} // Estabilização pesada antes de mostrar
+                solver: '{solver}', 
+                barnesHut: {{ gravitationalConstant: {repulsao}, centralGravity: 0.3, springLength: 250, avoidOverlap: 1 }},
+                forceAtlas2Based: {{ gravitationalConstant: {repulsao}, centralGravity: 0.005, springLength: 250, avoidOverlap: 1 }},
+                stabilization: {{ enabled: true, iterations: 200 }} 
             }}, 
             interaction: {{ dragNodes: true, zoomView: true, dragView: true }} 
         }};
         var network = new vis.Network(container, data, options);
         
+        network.on('stabilizationProgress', function(params) {{
+            if (params.iterations > 190) {{
+                network.stopSimulation();
+                document.getElementById('loading').style.display = 'none';
+            }}
+        }});
+
         network.once('stabilizationIterationsDone', function() {{ 
-            network.setOptions({{ physics: false }}); // CONGELA A FÍSICA PARA FICAR LEVE
+            network.setOptions({{ physics: false }});
             var sN = "{normalizar_nome(st.session_state.sel_nome)}";
             if(sN !== "{normalizar_nome('Nenhum selecionado')}") network.focus(sN, {{ scale: 0.7, animation: true }});
             document.getElementById('loading').style.display = 'none'; 
         }});
         
-        // Backup para esconder loading caso demore muito
-        setTimeout(() => {{ document.getElementById('loading').style.display = 'none'; }}, 8000);
+        setTimeout(() => {{ 
+            network.stopSimulation();
+            document.getElementById('loading').style.display = 'none'; 
+        }}, 6000);
     </script>
     <style>@keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}</style>
     """
