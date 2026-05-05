@@ -40,7 +40,6 @@ def carregar_dados():
     for col in ["ÁREA", "NOME", "LIDER DIRETO", "Descricao_Area", "Info_Posicao"]:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip()
-    df["ÁREA_BUSCA"] = df["ÁREA"].str.upper()
     df["NOME_NORM"] = df["NOME"].apply(normalizar_nome)
     df["LIDER_NORM"] = df["LIDER DIRETO"].apply(normalizar_nome)
     return df
@@ -102,22 +101,22 @@ st.markdown("<style>.stAlert { background-color: #f3f0ff !important; border: 1px
 if st.session_state.sel_area != "Empresa inteira" or st.session_state.sel_nome != "Nenhum selecionado":
     st.markdown("<br>", unsafe_allow_html=True)
     inf1, inf2 = st.columns(2)
-    area_para_pesquisa = st.session_state.sel_area
+    area_ref = st.session_state.sel_area
     if st.session_state.sel_nome != "Nenhum selecionado":
-        area_para_pesquisa = nome_para_area.get(st.session_state.sel_nome, st.session_state.sel_area)
+        area_ref = nome_para_area.get(st.session_state.sel_nome, st.session_state.sel_area)
 
     with inf1:
-        if area_para_pesquisa != "Empresa inteira":
-            dados_area = df[(df["ÁREA"] == area_para_pesquisa) & (df["Descricao_Area"] != "") & (df["Descricao_Area"] != "nan")]
-            if not dados_area.empty:
-                st.info(f"**🏢 Sobre a área {area_para_pesquisa}:**\n\n{dados_area['Descricao_Area'].iloc[0]}")
+        if area_ref != "Empresa inteira":
+            d_area = df[(df["ÁREA"] == area_ref) & (df["Descricao_Area"] != "") & (df["Descricao_Area"] != "nan")]
+            if not d_area.empty:
+                st.info(f"**🏢 Sobre a área {area_ref}:**\n\n{d_area['Descricao_Area'].iloc[0]}")
     with inf2:
         if st.session_state.sel_nome != "Nenhum selecionado":
-            dados_colab = df[df["NOME"] == st.session_state.sel_nome]
-            if not dados_colab.empty:
-                texto_pos = dados_colab["Info_Posicao"].iloc[0]
-                if texto_pos and texto_pos.lower() != "nan" and texto_pos != "":
-                    st.info(f"**👤 Posição de {st.session_state.sel_nome}:**\n\n{texto_pos}")
+            d_colab = df[df["NOME"] == st.session_state.sel_nome]
+            if not d_colab.empty:
+                t_pos = d_colab["Info_Posicao"].iloc[0]
+                if t_pos and t_pos.lower() != "nan" and t_pos != "":
+                    st.info(f"**👤 Posição de {st.session_state.sel_nome}:**\n\n{t_pos}")
     st.markdown("---")
 
 # --- 6. ORGANOGRAMA ---
@@ -137,40 +136,33 @@ with col_main:
         repulsao = -2500
     else:
         df_view = df[df["ÁREA"] == st.session_state.sel_area].copy()
-        lideres_norm = df_view["LIDER_NORM"].unique()
-        df_view = pd.concat([df_view, df[df["NOME_NORM"].isin(lideres_norm)]]).drop_duplicates(subset=["NOME"])
+        l_norm = df_view["LIDER_NORM"].unique()
+        df_view = pd.concat([df_view, df[df["NOME_NORM"].isin(l_norm)]]).drop_duplicates(subset=["NOME"])
         repulsao = -1000
 
     nodes = []
     for _, row in df_view.iterrows():
         n = row["NOME"]
-        cargo = row["CARGO"].upper()
-        is_ceo = "CEO" in cargo or "MATHEUS EID PAGANI" in n.upper()
-        if is_ceo:
-            tamanho_fonte, margem_interna, largura_max, borda = 80, 45, 600, 8
-        else:
-            tamanho_fonte, margem_interna, largura_max, borda = 28, 15, 250, 2
-        cor_b = area_color.get(row["ÁREA"], "#7443F6")
-        cor_f = "#000000"
-        if n == st.session_state.sel_nome: cor_b, cor_f = "#2B7CE9", "#FFFFFF"
+        is_ceo = "CEO" in row["CARGO"].upper() or "MATHEUS EID PAGANI" in n.upper()
+        t_f, m_i, l_m, b = (80, 45, 600, 8) if is_ceo else (28, 15, 250, 2)
+        c_b = area_color.get(row["ÁREA"], "#7443F6")
+        c_f = "#FFFFFF" if n == st.session_state.sel_nome else "#000000"
+        if n == st.session_state.sel_nome: c_b = "#2B7CE9"
 
         nodes.append({
-            "id": row["NOME_NORM"], 
-            "label": f"<b>{n}</b>\n{row['CARGO']}", 
-            "color": {"background": cor_b, "border": escurecer_cor(cor_b)}, 
-            "font": {"multi": "html", "color": cor_f, "size": tamanho_fonte, "face": "Manrope"}, 
-            "shape": "box", 
-            "margin": margem_interna,
-            "borderWidth": borda,
-            "widthConstraint": {"maximum": largura_max}
+            "id": row["NOME_NORM"], "label": f"<b>{n}</b>\n{row['CARGO']}", 
+            "color": {"background": c_b, "border": escurecer_cor(c_b)}, 
+            "font": {"multi": "html", "color": c_f, "size": t_f, "face": "Manrope"}, 
+            "shape": "box", "margin": m_i, "borderWidth": b, "widthConstraint": {"maximum": l_m}
         })
 
     edges = [{"from": r["LIDER_NORM"], "to": r["NOME_NORM"], "arrows": "to", "color": "#000000", "width": 3} 
              for _, r in df_view.iterrows() if r["LIDER_NORM"] in df_view["NOME_NORM"].values]
 
     html_vis = f"""
-    <div id="loading" style="position:absolute; width:100%; height:100%; background:white; display:flex; align-items:center; justify-content:center; z-index:999; font-family:sans-serif;">
-        <div style="text-align:center;"><div style="width:40px; height:40px; border:4px solid #f3f3f3; border-top:4px solid #7443F6; border-radius:50%; animation:spin 1s linear infinite;"></div><p style="margin-top:10px; font-weight:bold; color:#7443F6;">Montando o organograma...</p></div>
+    <div id="loading" style="position:absolute; width:100%; height:100%; background:white; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:999; font-family:sans-serif;">
+        <div style="width:40px; height:40px; border:4px solid #f3f3f3; border-top:4px solid #7443F6; border-radius:50%; animation:spin 1s linear infinite;"></div>
+        <p style="margin-top:10px; font-weight:bold; color:#7443F6;">Montando o organograma...</p>
     </div>
     <div id="mynetwork" style="height: 750px; background: white; border-radius:15px; border: 1px solid #ddd;"></div>
     <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
@@ -178,18 +170,13 @@ with col_main:
         var container = document.getElementById('mynetwork');
         var data = {{ nodes: new vis.DataSet({json.dumps(nodes)}), edges: new vis.DataSet({json.dumps(edges)}) }};
         var options = {{ 
-            physics: {{ 
-                enabled: true, 
-                solver: 'forceAtlas2Based', 
-                forceAtlas2Based: {{ gravitationalConstant: {repulsao}, centralGravity: 0.005, springLength: 220, avoidOverlap: 1 }}, 
-                stabilization: {{ iterations: 200 }} 
-            }}, 
+            physics: {{ enabled: true, solver: 'forceAtlas2Based', forceAtlas2Based: {{ gravitationalConstant: {repulsao}, centralGravity: 0.005, springLength: 220, avoidOverlap: 1 }}, stabilization: {{ iterations: 200 }} }}, 
             interaction: {{ dragNodes: true, zoomView: true, dragView: true }} 
         }};
         var network = new vis.Network(container, data, options);
         network.once('stabilized', function() {{ 
-            var searchNorm = "{normalizar_nome(st.session_state.sel_nome)}";
-            if(searchNorm !== "{normalizar_nome('Nenhum selecionado')}") network.focus(searchNorm, {{ scale: 0.7, animation: true }});
+            var sN = "{normalizar_nome(st.session_state.sel_nome)}";
+            if(sN !== "{normalizar_nome('Nenhum selecionado')}") network.focus(sN, {{ scale: 0.7, animation: true }});
             document.getElementById('loading').style.display = 'none'; 
         }});
         setTimeout(() => {{ document.getElementById('loading').style.display = 'none'; }}, 5000);
