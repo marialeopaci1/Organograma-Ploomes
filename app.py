@@ -8,7 +8,8 @@ import unicodedata
 # --- 1. CONFIGURAÇÃO E LOGIN ---
 st.set_page_config(page_title="Portal RH | Ploomes", layout="wide", initial_sidebar_state="collapsed")
 
-if "logado" not in st.session_state: st.session_state.logado = False
+if "logado" not in st.session_state:
+    st.session_state.logado = False
 
 if not st.session_state.logado:
     _, col2, _ = st.columns([1, 1.2, 1])
@@ -133,7 +134,7 @@ with col_side:
 with col_main:
     if st.session_state.sel_area == "Empresa inteira":
         df_view = df
-        repulsao = -2500 # Aumentado para acomodar o CEO gigante
+        repulsao = -2500
     else:
         df_view = df[df["ÁREA"] == st.session_state.sel_area].copy()
         lideres_norm = df_view["LIDER_NORM"].unique()
@@ -144,15 +145,11 @@ with col_main:
     for _, row in df_view.iterrows():
         n = row["NOME"]
         cargo = row["CARGO"].upper()
-        
-        # LÓGICA DE TAMANHO DIFERENCIADO PARA O CEO
         is_ceo = "CEO" in cargo or "MATHEUS EID PAGANI" in n.upper()
-        
         if is_ceo:
             tamanho_fonte, margem_interna, largura_max, borda = 80, 45, 600, 8
         else:
             tamanho_fonte, margem_interna, largura_max, borda = 28, 15, 250, 2
-
         cor_b = area_color.get(row["ÁREA"], "#7443F6")
         cor_f = "#000000"
         if n == st.session_state.sel_nome: cor_b, cor_f = "#2B7CE9", "#FFFFFF"
@@ -197,5 +194,6 @@ with col_main:
         }});
         setTimeout(() => {{ document.getElementById('loading').style.display = 'none'; }}, 5000);
     </script>
+    <style>@keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}</style>
     """
     components.html(html_vis, height=770)
