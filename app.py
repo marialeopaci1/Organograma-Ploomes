@@ -135,16 +135,20 @@ with col_main:
     
     if is_full:
         df_view = df
+        repulsao = -25000 # Força de separação massiva para não embolar
+        spring = 400      # Setas mais longas
     else:
         df_view = df[df["ÁREA"] == st.session_state.sel_area].copy()
         l_norm = df_view["LIDER_NORM"].unique()
         df_view = pd.concat([df_view, df[df["NOME_NORM"].isin(l_norm)]]).drop_duplicates(subset=["NOME"])
+        repulsao = -1500
+        spring = 250
 
     nodes = []
     for _, row in df_view.iterrows():
         n = row["NOME"]
         is_ceo = "CEO" in row["CARGO"].upper() or "MATHEUS EID PAGANI" in n.upper()
-        t_f, m_i, l_m, b = (60, 35, 500, 6) if is_ceo else (28, 15, 250, 2)
+        t_f, m_i, l_m, b = (80, 45, 600, 8) if is_ceo else (28, 15, 250, 2)
         c_b = area_color.get(row["ÁREA"], "#7443F6")
         c_f = "#FFFFFF" if n == st.session_state.sel_nome else "#000000"
         if n == st.session_state.sel_nome: c_b = "#2B7CE9"
@@ -156,7 +160,7 @@ with col_main:
             "shape": "box", "margin": m_i, "borderWidth": b, "widthConstraint": {"maximum": l_m}
         })
 
-    edges = [{"from": r["LIDER_NORM"], "to": r["NOME_NORM"], "arrows": "to", "color": "#000000", "width": 2} 
+    edges = [{"from": r["LIDER_NORM"], "to": r["NOME_NORM"], "arrows": "to", "color": "#000000", "width": 3} 
              for _, r in df_view.iterrows() if r["LIDER_NORM"] in df_view["NOME_NORM"].values]
 
     html_vis = f"""
@@ -170,25 +174,33 @@ with col_main:
         var container = document.getElementById('mynetwork');
         var data = {{ nodes: new vis.DataSet({json.dumps(nodes)}), edges: new vis.DataSet({json.dumps(edges)}) }};
         var options = {{ 
-            layout: {{
-                hierarchical: {{
-                    enabled: true,
-                    direction: 'UD',
-                    sortMethod: 'directed',
-                    nodeSpacing: 250,
-                    levelSeparation: 350
-                }}
-            }},
-            physics: {{ enabled: false }}, // Física desligada no modo hierárquico para ser instantâneo
-            interaction: {{ dragNodes: false, zoomView: true, dragView: true }} 
+            physics: {{ 
+                enabled: true, 
+                solver: 'forceAtlas2Based', 
+                forceAtlas2Based: {{ 
+                    gravitationalConstant: {repulsao}, 
+                    centralGravity: 0.005, 
+                    springLength: {spring}, 
+                    avoidOverlap: 1 
+                }}, 
+                stabilization: {{ 
+                    enabled: true, 
+                    iterations: 400 // Aumentado para ele já aparecer "parado" e arrumado
+                }} 
+            }}, 
+            interaction: {{ dragNodes: true, zoomView: true, dragView: true }} 
         }};
         var network = new vis.Network(container, data, options);
+        
         network.once('stabilized', function() {{ 
+            network.setOptions({{ physics: false }}); // Trava os nomes no lugar após arrumar
             var sN = "{normalizar_nome(st.session_state.sel_nome)}";
-            if(sN !== "{normalizar_nome('Nenhum selecionado')}") network.focus(sN, {{ scale: 0.6, animation: true }});
+            if(sN !== "{normalizar_nome('Nenhum selecionado')}") network.focus(sN, {{ scale: 0.5, animation: true }});
             document.getElementById('loading').style.display = 'none'; 
         }});
-        setTimeout(() => {{ document.getElementById('loading').style.display = 'none'; }}, 5000);
+        
+        // Backup de segurança
+        setTimeout(() => {{ document.getElementById('loading').style.display = 'none'; }}, 10000);
     </script>
     <style>@keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}</style>
     """
